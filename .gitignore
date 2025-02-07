@@ -22,8 +22,6 @@ wheels/
 dist/
 build/
 installer/
-release/
-*.exe
 *.spec
 *.msi
 *.zip
