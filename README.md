@@ -1,163 +1,167 @@
-# Door Kickers 2 Mod Tools 🎮
+# Door Kickers 2 Modding Tool
 
-A comprehensive GUI toolkit for creating and editing mods for Door Kickers 2. This tool simplifies the modding process by providing visual editors for various aspects of the game.
+⚠️ **WORK IN PROGRESS - USE AT YOUR OWN RISK** ⚠️
 
-## 🌟 Features
+This tool is currently in early development. Many features are incomplete, broken, or may not work as expected. Things that might break:
+- File saving/loading may fail
+- UI elements might not update properly
+- XML validation might be incomplete
+- Some editors might crash
+- Changes might not be saved correctly
 
-### GUI Editor
-- Visual layout editor for deployment screens
-- Drag-and-drop interface for unit slots
-- Class container management
+**ALWAYS BACKUP YOUR MOD FILES BEFORE USING THIS TOOL!**
+
+---
+
+A graphical tool to help create and edit mods for Door Kickers 2. This tool provides a user-friendly interface for editing various aspects of DK2 mods, including unit configurations, equipment bindings, GUI layouts, and more.
+
+## Features
+
+### Equipment & Bindings Editor
+- Configure equipment loadouts for different unit classes
+- Manage equipment bindings and relationships
+- Visual editor for equipment assignments
+
+### GUI Layout Editor
+- Visual drag-and-drop interface for deploy screen layout
+- Support for 2x1, 4x1, and 4x2 unit boxes
+- Class-specific slot assignments
 - Real-time preview of changes
-- Automatic XML generation
 
 ### Units Editor
-- Create and modify unit configurations
-- Edit unit classes and properties
-- Manage unit equipment and loadouts
-- Visual feedback for changes
-
-### Equipment Binding Editor
-- Configure equipment bindings
-- Manage weapon and gear assignments
-- Easy-to-use interface for complex configurations
+- Edit unit templates and properties
+- Configure ranks and trooper ranks
+- Manage unit attributes and equipment
 
 ### Entities Editor
-- Create and modify game entities
-- Visual property editor
-- XML validation and error checking
+- Edit human entity templates
+- Configure AI behavior and properties
+- Manage entity attributes
 
-### Localization Editor
-- Manage game text and translations
-- Multi-language support
-- Easy text entry and editing
+### Mod Management
+- Centralized file management
+- Automatic file structure creation
+- Support for multiple mods
 
-### Mod Metadata Editor
-- Configure mod information
-- Set mod dependencies
-- Manage version information
+### Additional Features
+- XML validation
+- Mod packaging
+- Configurable logging per module
+- Auto-detection of game installation
 
-## 🚀 Getting Started
+## Installation
 
-### Prerequisites
-- Python 3.8 or higher
-- Tkinter (usually comes with Python)
-- A copy of Door Kickers 2
+### Option 1: Windows Installer (Recommended)
+1. Download the latest installer from the [Releases](https://github.com/yourusername/dk2-modding-tool/releases) page
+2. Run the installer
+3. Follow the installation wizard
+4. Launch the tool from the Start Menu or Desktop shortcut
 
-### Installation
-1. Clone this repository:
+### Option 2: Manual Installation (For Developers)
+1. Clone this repository
+2. Install Python 3.8 or higher
+3. Install dependencies:
 ```bash
-git clone https://github.com/the-Drunken-coder/DK2-mod-tools.git
+pip install -r requirements.txt
 ```
-
-2. Navigate to the project directory:
-```bash
-cd DK2-mod-tools
-```
-
-3. Run the tool:
+4. Run the tool:
 ```bash
 python modding_tool.py
 ```
 
-## 📖 Usage Guide
+## First Time Setup
 
-### Creating a New Mod
 1. Launch the tool
-2. Select the type of editor you want to use
-3. Create or modify your mod components
-4. Save your changes
+2. The tool will attempt to auto-detect your DK2 installation
+3. If auto-detection fails, you can manually set:
+   - Game Directory: Your DK2 installation folder
+   - Mod Directory: Your mods folder (typically in the game directory)
+4. Select your mod from the dropdown
+5. Start editing!
 
-### GUI Editor
-- **Adding Boxes**: Use the buttons at the top to add 2x1, 4x1, or 4x2 boxes
-- **Moving Boxes**: Drag and drop boxes to position them
-- **Editing Properties**: Use the right panel to edit box properties
-- **Class Assignment**: Assign slots to different classes using dropdowns
-- **Saving**: Changes are auto-saved when modifying slots
+## Module Details
+
+### Equipment & Bindings Editor
+- Create and edit equipment bindings
+- Assign equipment to specific classes
+- Visual feedback for binding relationships
+
+### GUI Layout Editor
+- Design deploy screen layouts
+- Drag-and-drop interface for unit boxes
+- Configure class assignments per slot
+- Support for multiple box types:
+  - 2x1 (2 slots)
+  - 4x1 (4 slots)
+  - 4x2 (8 slots)
 
 ### Units Editor
-- Select unit types to modify
-- Edit properties in the right panel
-- Changes are validated in real-time
-- Save changes to update unit files
+- Edit unit properties
+- Configure ranks and progression
+- Manage unit attributes
+- Set equipment loadouts
 
-### Equipment Editor
-- Modify weapon and gear bindings
-- Configure equipment slots
-- Set up default loadouts
-- Preview changes before saving
+### Entities Editor
+- Edit human entity templates
+- Configure AI behavior
+- Set movement and combat properties
+- Manage equipment loadouts
 
-## 🔧 File Structure
+## Development
+
+### Project Structure
 ```
-DK2-mod-tools/
-├── modding_tool.py          # Main application entry point
-├── modules/                 # Editor modules
-│   ├── gui_editor_module.py           # GUI layout editor
-│   ├── units_editor_module.py         # Unit configuration editor
-│   ├── equipment_binding_editor.py    # Equipment binding editor
-│   ├── entities_editor_module.py      # Entity editor
-│   ├── localization_editor_module.py  # Text/translation editor
-│   └── mod_metadata_editor_module.py  # Mod info editor
-└── utils.py                # Utility functions
-```
-
-## 🎯 XML Structure
-The tool generates and modifies several XML files used by Door Kickers 2:
-
-### GUI Layout (seals_deploy.xml)
-```xml
-<GUIItems>
-    <Item name="MOD_NAME">
-        <!-- Class containers and slots -->
-        <StaticImage name="ClassName">
-            <!-- Slot configurations -->
-        </StaticImage>
-    </Item>
-</GUIItems>
+dk2-modding-tool/
+├── modding_tool.py       # Main application
+├── utils.py             # Utility functions
+├── modules/            # Plugin modules
+│   ├── config_editor_module.py
+│   ├── entities_editor_module.py
+│   ├── equipment_binding_editor_module.py
+│   ├── gui_editor_module.py
+│   ├── mod_files.py
+│   └── units_editor_module.py
+└── Example mod/        # Example mod templates
 ```
 
-### Units (units.xml)
-```xml
-<Units>
-    <Unit name="UnitName">
-        <!-- Unit properties -->
-        <Class name="ClassName">
-            <!-- Class-specific properties -->
-        </Class>
-    </Unit>
-</Units>
+### Logging System
+Each module has its own logging toggle at the top of the file:
+```python
+ENABLE_LOGGING = False  # Toggle module logging
+```
+Set to `True` to enable detailed logging for that specific module.
+
+### Building from Source
+
+#### Prerequisites
+- Python 3.8 or higher
+- Inno Setup 6 or higher (for installer creation)
+- Required Python packages:
+  ```
+  pip install -r requirements-build.txt
+  ```
+
+#### Build Steps
+1. Set up the build environment:
+```bash
+python setup_build_env.py
 ```
 
-## 🤝 Contributing
-Contributions are welcome! Here's how you can help:
+2. Build the executable:
+```bash
+python build_installer.py
+```
+
+The installer will be created in the `installer` directory.
+
+## Contributing
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+2. Create your feature branch
+3. Commit your changes
+4. Push to the branch
+5. Create a Pull Request
 
-## 📝 License
-This project is licensed under the MIT License - see the LICENSE file for details.
+## License
 
-## 🙏 Acknowledgments
-- Door Kickers 2 development team for creating an amazing game
-- The modding community for their support and feedback
-- All contributors to this project
-
-## 🐛 Known Issues
-- Some complex XML structures might need manual adjustment
-- Visual preview might slightly differ from in-game appearance
-
-## 📞 Support
-If you encounter any issues or have questions:
-1. Check the [Issues](https://github.com/the-Drunken-coder/DK2-mod-tools/issues) page
-2. Create a new issue with detailed information about your problem
-3. Join our community discussions
-
-## 🔄 Version History
-- v1.0.0 - Initial release
-  - Basic GUI editor functionality
-  - Unit editor implementation
-  - Equipment binding support
-  - Entity editor features 
+MIT License - See LICENSE file for details 

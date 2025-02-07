@@ -2,9 +2,15 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import xml.etree.ElementTree as ET
 import os
+from modules import config_editor_module
 
-# Path to the entities XML file
-XML_PATH = os.path.join("Example mod", "Baby seals", "entities", "seals_humans.xml")
+PLUGIN_TITLE = "Entities Editor"
+ENABLE_LOGGING = False  # Toggle module logging
+
+def log(message):
+    """Module specific logging function"""
+    if ENABLE_LOGGING:
+        print(f"[EntitiesEditor] {message}")
 
 class EntitiesEditor(tk.Frame):
     def __init__(self, parent):
@@ -12,6 +18,7 @@ class EntitiesEditor(tk.Frame):
         self.tree = None
         self.entities = []
         self.current_entity = None
+        self.config = config_editor_module.load_config()
 
         self.entity_attr_entries = {}
         self.human_attr_entries = {}
@@ -25,9 +32,58 @@ class EntitiesEditor(tk.Frame):
         self.build_ui()
         self.load_xml()
 
+    def get_mod_path(self):
+        """Get the current mod path based on configuration"""
+        mod_path = self.config.get("mod_path", "")
+        current_mod = self.config.get("last_used_mod", "")
+        if not mod_path or not current_mod:
+            return None
+        return os.path.join(mod_path, current_mod)
+        
+    def get_xml_path(self):
+        """Get the current entities XML file path based on configuration"""
+        mod_path = self.get_mod_path()
+        if not mod_path:
+            return None
+            
+        # Find all *_humans.xml files in the entities directory
+        entities_dir = os.path.join(mod_path, "entities")
+        if not os.path.exists(entities_dir):
+            os.makedirs(entities_dir, exist_ok=True)
+            return os.path.join(entities_dir, "humans.xml")  # Default fallback
+            
+        # Find all *_humans.xml files
+        human_files = []
+        for file in os.listdir(entities_dir):
+            if file.endswith("_humans.xml"):
+                full_path = os.path.join(entities_dir, file)
+                human_files.append((full_path, os.path.getsize(full_path)))
+                
+        # If no *_humans.xml files found, use default humans.xml
+        if not human_files:
+            return os.path.join(entities_dir, "humans.xml")
+            
+        # Sort by file size (largest first) and return the path
+        human_files.sort(key=lambda x: x[1], reverse=True)
+        return human_files[0][0]
+
     def load_xml(self):
         try:
-            self.tree = ET.parse(XML_PATH)
+            xml_path = self.get_xml_path()
+            if not xml_path:
+                messagebox.showerror("Error", "No mod path configured")
+                return
+                
+            if not os.path.exists(xml_path):
+                # Create basic structure
+                root = ET.Element("Entities")
+                # Add a comment explaining the file
+                root.append(ET.Comment("Human entity definitions for the mod"))
+                tree = ET.ElementTree(root)
+                tree.write(xml_path, encoding='utf-8', xml_declaration=True)
+                messagebox.showinfo("Info", "Created new humans.xml file with default structure")
+                
+            self.tree = ET.parse(xml_path)
             root = self.tree.getroot()
             self.entities = root.findall('Entity')
             if not self.entities:
@@ -249,7 +305,7 @@ class EntitiesEditor(tk.Frame):
             item_elem.set("name", item)
         
         try:
-            self.tree.write(XML_PATH, encoding='utf-8', xml_declaration=True)
+            self.tree.write(xml_path, encoding='utf-8', xml_declaration=True)
             messagebox.showinfo("Success", "XML file updated successfully.")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to write XML: {e}")

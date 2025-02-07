@@ -3,6 +3,16 @@ from tkinter import ttk, messagebox
 import xml.etree.ElementTree as ET
 import os
 from pathlib import Path
+from modules import config_editor_module
+from modding_tool import get_equipment_file, get_unit_file, mod_files
+
+PLUGIN_TITLE = "Equipment & Bindings"
+ENABLE_LOGGING = False  # Toggle module logging
+
+def log(message):
+    """Module specific logging function"""
+    if ENABLE_LOGGING:
+        print(f"[EquipmentBindingEditor] {message}")
 
 class EquipmentBindingEditor(tk.Frame):
     def __init__(self, parent):
@@ -10,14 +20,46 @@ class EquipmentBindingEditor(tk.Frame):
         self.tree = None
         self.bindings = []
         self.binding_widgets = []
-        self.mod_path = os.path.join("Example mod", "Baby seals")
-        self.faction_name = "BABY SEALS"
+        self.config = config_editor_module.load_config()
+        
+        # Get mod path and initialize ModFiles
+        mod_path = self.get_mod_path()
+        if mod_path:
+            mod_files.mod_path = mod_path
+            mod_files.scan_mod_directory()
+            self.faction_name = mod_files.get_mod_name()
+            log(f"Initialized with faction name: {self.faction_name}")
+        else:
+            self.faction_name = "FACTION"
+            log("No mod path, using default faction name: FACTION")
+            
         self.binding_sources = {
-            "equipment": {"path": "equipment/seals_binds.xml", "xpath": ".//Bind"},
-            "units": {"path": "units/seals_unit.xml", "xpath": ".//Equipment"}
+            "equipment": {"path": "equipment/binds.xml", "xpath": ".//Bind"}
         }
         self.build_ui()
         self.load_all_bindings()
+
+    def get_mod_path(self):
+        """Get the current mod path based on configuration"""
+        mod_path = self.config.get("mod_path", "")
+        current_mod = self.config.get("last_used_mod", "")
+        if not mod_path or not current_mod:
+            return None
+        return os.path.join(mod_path, current_mod)
+
+    def get_equipment_xml_path(self):
+        """Get the equipment binds XML file path"""
+        mod_path = self.get_mod_path()
+        if not mod_path:
+            return None
+        return get_equipment_file(mod_path)
+
+    def get_unit_xml_path(self):
+        """Get the unit XML file path"""
+        mod_path = self.get_mod_path()
+        if not mod_path:
+            return None
+        return get_unit_file(mod_path)
 
     def build_ui(self):
         # Create main container with tabs
@@ -71,69 +113,108 @@ class EquipmentBindingEditor(tk.Frame):
         self.notebook.add(summary_tab, text="Summary")
 
     def get_available_classes(self):
-        classes = set(["FACTION"])  # Add FACTION as a special class
-        unit_xml_path = os.path.join(self.mod_path, "units", "seals_unit.xml")
-        try:
-            tree = ET.parse(unit_xml_path)
-            root = tree.getroot()
-            for cls in root.findall(".//Class"):
-                name = cls.get("name")
-                if name:  # Only add if name exists and is not None
-                    classes.add(str(name))  # Convert to string to ensure safe comparison
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to load unit classes: {e}")
-        return sorted(list(filter(None, classes)))  # Filter out any None values before sorting
+        """Get available classes from the unit file"""
+        from modding_tool import mod_files
+        # Only scan if the path has changed
+        if mod_files.mod_path != self.get_mod_path():
+            mod_files.mod_path = self.get_mod_path()
+            mod_files.scan_mod_directory()
+            log("Rescanned mod directory due to path change")
+        classes = mod_files.get_available_classes()
+        log(f"Available classes: {classes}")
+        return classes
 
     def load_xml_file(self, file_path, xpath):
+        """Load XML file and return bindings"""
         try:
-            full_path = os.path.join(self.mod_path, file_path)
-            if not os.path.exists(full_path):
+            mod_path = self.get_mod_path()
+            if not mod_path:
+                messagebox.showerror("Error", "No mod path configured")
                 return []
+            
+            # Get the appropriate XML path based on the source
+            if file_path == "equipment/binds.xml":
+                full_path = get_equipment_file(mod_path)
+            elif file_path == "units/unit.xml":
+                full_path = get_unit_file(mod_path)
+            else:
+                full_path = os.path.normpath(os.path.join(mod_path, file_path))
+            
+            if not full_path:
+                return []
+            
+            # Create directory if it doesn't exist
+            os.makedirs(os.path.dirname(full_path), exist_ok=True)
+            
+            if not os.path.exists(full_path):
+                # Create basic XML structure based on file type
+                if xpath == ".//Bind":
+                    root = ET.Element("Equipment")
+                    # Add a comment explaining the file
+                    root.append(ET.Comment("Equipment bindings for classes and factions"))
+                    tree = ET.ElementTree(root)
+                    tree.write(full_path, encoding='utf-8', xml_declaration=True)
+                elif xpath == ".//Equipment":
+                    root = ET.Element("Unit")
+                    equipment = ET.SubElement(root, "Equipment")
+                    tree = ET.ElementTree(root)
+                    tree.write(full_path, encoding='utf-8', xml_declaration=True)
+                return []
+            
             tree = ET.parse(full_path)
+            root = tree.getroot()
             
             # For equipment bindings, we need to handle all binding formats
             if xpath == ".//Bind":
                 bindings = []
-                for bind in tree.findall(xpath):
-                    # Case 1: Multiple to elements (equipment bound to multiple classes)
-                    if bind.findall("to"):
-                        eqp_value = bind.get("eqp")
-                        if eqp_value:
-                            for to in bind.findall("to"):
-                                to_value = to.get("name")
-                                if to_value:
-                                    new_bind = ET.Element("Bind")
-                                    new_bind.set("eqp", str(eqp_value))
-                                    new_bind.set("to", str(to_value))
-                                    bindings.append(new_bind)
-                    # Case 2: Multiple eqp elements (new format)
-                    elif bind.findall("eqp"):
-                        to_value = bind.get("to")
-                        if to_value:
-                            for eqp in bind.findall("eqp"):
-                                eqp_value = eqp.get("name")
-                                if eqp_value:
-                                    new_bind = ET.Element("Bind")
-                                    new_bind.set("eqp", str(eqp_value))
-                                    new_bind.set("to", str(to_value))
-                                    bindings.append(new_bind)
-                    # Case 3: Direct attributes
-                    else:
-                        eqp_value = bind.get("eqp")
-                        to_value = bind.get("to")
-                        if eqp_value and to_value:
-                            new_bind = ET.Element("Bind")
-                            new_bind.set("eqp", str(eqp_value))
-                            new_bind.set("to", str(to_value))
-                            bindings.append(new_bind)
-                            
+                # Process each Bind element
+                for bind in root.findall(".//Bind"):
+                    # Format 1: <Bind eqp="X" to="Y"/>
+                    eqp_value = bind.get("eqp")
+                    to_value = bind.get("to")
+                    if eqp_value and to_value:
+                        new_bind = ET.Element("Bind")
+                        new_bind.set("eqp", str(eqp_value))
+                        new_bind.set("to", str(to_value))
+                        bindings.append(new_bind)
+                        continue
+
+                    # Format 2: <Bind eqp="X"><to name="Y"/></Bind>
+                    if eqp_value:
+                        for to in bind.findall("to"):
+                            to_value = to.get("name")
+                            if to_value:
+                                new_bind = ET.Element("Bind")
+                                new_bind.set("eqp", str(eqp_value))
+                                new_bind.set("to", str(to_value))
+                                bindings.append(new_bind)
+                        continue
+
+                    # Format 3: <Bind to="Y"><eqp name="X"/></Bind>
+                    to_value = bind.get("to")
+                    if to_value:
+                        # Handle both single eqp and multiple eqp elements
+                        for eqp in bind.findall("eqp"):
+                            eqp_value = eqp.get("name")
+                            if eqp_value:
+                                new_bind = ET.Element("Bind")
+                                new_bind.set("eqp", str(eqp_value))
+                                new_bind.set("to", str(to_value))
+                                bindings.append(new_bind)
+                
                 return bindings
-            return tree.findall(xpath)
+            else:
+                elements = tree.findall(xpath)
+                return elements
+            
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to load {file_path}: {e}")
+            messagebox.showerror("Error", f"Failed to load XML file {file_path}: {e}")
             return []
 
     def load_all_bindings(self):
+        """Load all bindings from XML files"""
+        log("Loading all bindings...")
+        
         # Store old widget references before clearing
         old_widgets = self.binding_widgets.copy()
         
@@ -141,15 +222,28 @@ class EquipmentBindingEditor(tk.Frame):
         self.binding_trees = {}
         self.binding_widgets = []  # Clear widget references
         
-        # Load bindings from all sources
-        for source, info in self.binding_sources.items():
-            elements = self.load_xml_file(info["path"], info["xpath"])
-            self.all_bindings[source] = elements
-            if elements:
-                tree = ET.parse(os.path.join(self.mod_path, info["path"]))
-                self.binding_trees[source] = tree
+        # Load bindings from equipment source
+        log("Loading bindings from equipment...")
+        elements = self.load_xml_file(self.binding_sources["equipment"]["path"], 
+                                    self.binding_sources["equipment"]["xpath"])
+        if elements:
+            log(f"Found {len(elements)} bindings in equipment")
+            self.all_bindings["equipment"] = elements
+            
+            try:
+                file_path = get_equipment_file(self.get_mod_path())
+                if os.path.exists(file_path):
+                    log(f"Loading equipment tree from: {os.path.basename(file_path)}")
+                    tree = ET.parse(file_path)
+                    self.binding_trees["equipment"] = tree
+            except Exception as e:
+                log(f"Warning: Failed to load equipment tree: {e}")
+        else:
+            log("No bindings found in equipment")
+            self.all_bindings["equipment"] = []
 
         # Clear existing UI - properly destroy all widgets
+        log("Clearing old widgets...")
         for widget in old_widgets:
             if "eqp_entry" in widget:
                 widget["eqp_entry"].destroy()
@@ -169,6 +263,7 @@ class EquipmentBindingEditor(tk.Frame):
         # Force update to ensure all widgets are properly destroyed
         self.update_idletasks()
 
+        log("Rebuilding views...")
         self.build_class_view()
         self.build_source_view()
         self.build_summary_view()
@@ -176,6 +271,7 @@ class EquipmentBindingEditor(tk.Frame):
     def is_faction_binding(self, binding):
         """Check if a binding is a faction-level binding"""
         binding_to = binding.get("to", "")
+        # Check both the current faction name and "FACTION" as fallback
         return binding_to == self.faction_name
 
     def get_effective_bindings(self, cls):
@@ -198,7 +294,8 @@ class EquipmentBindingEditor(tk.Frame):
     def create_xml_viewer_button(self, parent, source):
         """Create a button to view the XML file for a source"""
         if source in self.binding_sources:
-            file_path = os.path.join(self.mod_path, self.binding_sources[source]["path"])
+            # Normalize path to fix slashes
+            file_path = os.path.normpath(os.path.join(self.get_mod_path(), self.binding_sources[source]["path"]))
             btn = ttk.Button(parent, text=f"View {source} XML", 
                            command=lambda: self.show_xml_content(file_path))
             return btn
@@ -207,12 +304,41 @@ class EquipmentBindingEditor(tk.Frame):
     def show_xml_content(self, file_path):
         """Show XML content in a new window"""
         try:
-            with open(file_path, 'r') as file:
+            # Get the correct file path using the same method as load_xml_file
+            mod_path = self.get_mod_path()
+            if not mod_path:
+                messagebox.showerror("Error", "No mod path configured")
+                return
+            
+            # Get the appropriate XML path based on the source
+            if os.path.basename(os.path.dirname(file_path)) == "equipment":
+                full_path = get_equipment_file(mod_path)
+            else:
+                full_path = file_path
+            
+            if not full_path:
+                messagebox.showerror("Error", "Could not determine file path")
+                return
+            
+            log(f"Viewing XML file: {os.path.basename(full_path)}")
+            
+            # Ensure directory exists
+            os.makedirs(os.path.dirname(full_path), exist_ok=True)
+            
+            # Create basic file if it doesn't exist
+            if not os.path.exists(full_path):
+                log(f"Creating new equipment file: {full_path}")
+                root = ET.Element("Equipment")
+                tree = ET.ElementTree(root)
+                tree.write(full_path, encoding='utf-8', xml_declaration=True)
+            
+            # Read the file content
+            with open(full_path, 'r') as file:
                 content = file.read()
             
             # Create new window
             xml_window = tk.Toplevel()
-            xml_window.title(f"XML View - {os.path.basename(file_path)}")
+            xml_window.title(f"XML View - {os.path.basename(full_path)}")
             
             # Add text widget with scrollbar
             text_frame = ttk.Frame(xml_window)
@@ -238,8 +364,12 @@ class EquipmentBindingEditor(tk.Frame):
             
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load XML file: {e}")
+            log(f"Error loading XML file: {e}")
+            import traceback
+            traceback.print_exc()
 
     def build_class_view(self):
+        log("\nBuilding class view...")
         available_classes = self.get_available_classes()
         
         # Add XML viewer buttons at the top
@@ -262,6 +392,7 @@ class EquipmentBindingEditor(tk.Frame):
         faction_bindings = []
         source_bindings = [b for b in self.all_bindings.get("equipment", []) 
                          if self.is_faction_binding(b)]
+        log(f"Found {len(source_bindings)} faction bindings")
         faction_bindings.extend((b, "equipment") for b in source_bindings)
         
         if faction_bindings:
@@ -274,7 +405,8 @@ class EquipmentBindingEditor(tk.Frame):
         add_btn.pack(pady=5)
         
         # Then show class-specific bindings
-        for cls in [c for c in available_classes if c != "FACTION"]:
+        for cls in available_classes:
+            log(f"Processing class: {cls}")
             class_frame = ttk.LabelFrame(self.class_frame, text=f"Class: {cls}")
             class_frame.pack(fill="x", padx=5, pady=5, anchor="n")
             
@@ -286,6 +418,7 @@ class EquipmentBindingEditor(tk.Frame):
             class_bindings = []
             source_bindings = [b for b in self.all_bindings.get("equipment", []) 
                              if b.get("to", "") == cls]
+            log(f"Found {len(source_bindings)} bindings for class {cls}")
             class_bindings.extend((b, "equipment") for b in source_bindings)
             
             if class_bindings:
@@ -527,14 +660,14 @@ class EquipmentBindingEditor(tk.Frame):
                         continue  # Skip if widget has been destroyed
 
             # Write the XML content
-            file_path = os.path.join(self.mod_path, self.binding_sources["equipment"]["path"])
+            file_path = os.path.normpath(os.path.join(self.get_mod_path(), self.binding_sources["equipment"]["path"]))
             
             # Create formatted output
             output = ['<?xml version="1.0" encoding="utf-8"?>']
             output.append('<Equipment>')
             output.append('')
             
-            # Add faction bindings in the nested format
+            # Add faction bindings
             if faction_bindings:
                 output.append('<!-- Overall faction bindings -->')
                 output.append(f'\t<Bind to="{self.faction_name}">')
@@ -547,6 +680,8 @@ class EquipmentBindingEditor(tk.Frame):
             if class_bindings:
                 output.append('<!-- Class-specific bindings -->')
                 for cls in sorted(class_bindings.keys()):
+                    if not cls:  # Skip empty class names
+                        continue
                     output.append(f'<!-- {cls} equipment -->')
                     output.append(f'\t<Bind to="{cls}">')
                     for eqp in sorted(set(class_bindings[cls])):  # Use set to remove duplicates
@@ -645,7 +780,7 @@ class EquipmentBindingEditor(tk.Frame):
             output.append('</Equipment>')
 
             # Write the organized content
-            file_path = os.path.join(self.mod_path, self.binding_sources["equipment"]["path"])
+            file_path = os.path.normpath(os.path.join(self.get_mod_path(), self.binding_sources["equipment"]["path"]))
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(output))
 
@@ -658,15 +793,6 @@ class EquipmentBindingEditor(tk.Frame):
             raise
 
 
-def get_plugin_tab(parent):
-    container = ttk.Frame(parent)
-    editor = EquipmentBindingEditor(container)
-    editor.pack(fill="both", expand=True)
-    
-    # Set initial window size
-    parent.update_idletasks()  # Update geometry
-    screen_height = parent.winfo_screenheight()
-    desired_height = min(screen_height * 0.6, 600)  # 60% of screen height or 600px, whichever is smaller
-    parent.winfo_toplevel().geometry(f"800x{int(desired_height)}")
-    
-    return "Equipment & Binding Editor", container 
+def get_plugin_tab(notebook):
+    """Create and return the equipment binding editor tab"""
+    return PLUGIN_TITLE, EquipmentBindingEditor(notebook) 

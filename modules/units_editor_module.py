@@ -3,9 +3,15 @@ from tkinter import ttk, messagebox
 import xml.etree.ElementTree as ET
 import os
 from utils import load_xml as util_load_xml
+from modules import config_editor_module
 
-# Path to the units XML file
-XML_PATH = os.path.join("Example mod", "Baby seals", "units", "seals_unit.xml")
+PLUGIN_TITLE = "Units Editor"
+ENABLE_LOGGING = False  # Toggle module logging
+
+def log(message):
+    """Module specific logging function"""
+    if ENABLE_LOGGING:
+        print(f"[UnitsEditor] {message}")
 
 class UnitsEditor(tk.Frame):
     def __init__(self, parent):
@@ -16,12 +22,57 @@ class UnitsEditor(tk.Frame):
         self.class_entries = []       # List of tuples: (class_elem, {field: entry})
         self.trooper_rank_entries = []  # List of tuples: (rank_elem, {field: entry})
         self.rank_entries = []          # List of tuples: (rank_elem, {field: entry})
+        self.config = config_editor_module.load_config()
         
         self.load_xml()
         self.build_ui()
 
+    def get_xml_path(self):
+        """Get the current unit XML file path based on configuration"""
+        mod_path = self.config.get("mod_path", "")
+        current_mod = self.config.get("last_used_mod", "")
+        if not mod_path or not current_mod:
+            return None
+        
+        # Get the full mod directory path
+        mod_dir = os.path.join(mod_path, current_mod, "units")
+        if not os.path.exists(mod_dir):
+            os.makedirs(mod_dir, exist_ok=True)
+            return os.path.join(mod_dir, "unit.xml")  # Default fallback
+        
+        # Find all *_unit.xml files
+        unit_files = []
+        for file in os.listdir(mod_dir):
+            if file.endswith("_unit.xml"):
+                full_path = os.path.join(mod_dir, file)
+                unit_files.append((full_path, os.path.getsize(full_path)))
+        
+        # If no *_unit.xml files found, use default unit.xml
+        if not unit_files:
+            return os.path.join(mod_dir, "unit.xml")
+        
+        # Sort by file size (largest first) and return the path
+        unit_files.sort(key=lambda x: x[1], reverse=True)
+        return unit_files[0][0]
+
     def load_xml(self):
-        self.tree, root = util_load_xml(XML_PATH)
+        xml_path = self.get_xml_path()
+        if not xml_path:
+            messagebox.showerror("Error", "No mod path configured")
+            return
+            
+        if not os.path.exists(xml_path):
+            # Create a new unit XML file with basic structure
+            root = ET.Element("root")
+            unit = ET.SubElement(root, "Unit")
+            classes = ET.SubElement(unit, "Classes")
+            ranks = ET.SubElement(unit, "Ranks")
+            trooper_ranks = ET.SubElement(unit, "TrooperRanks")
+            self.tree = ET.ElementTree(root)
+            self.unit_elem = unit
+            return
+            
+        self.tree, root = util_load_xml(xml_path)
         if root:
             self.unit_elem = root.find('Unit')
             if self.unit_elem is None:
@@ -113,6 +164,11 @@ class UnitsEditor(tk.Frame):
         btn_save.pack(pady=10)
 
     def save_changes(self):
+        xml_path = self.get_xml_path()
+        if not xml_path:
+            messagebox.showerror("Error", "No mod path configured")
+            return
+            
         # Update unit attributes
         for field, entry in self.unit_attr_entries.items():
             self.unit_elem.set(field, entry.get())
@@ -138,16 +194,16 @@ class UnitsEditor(tk.Frame):
                 for field, entry in entries.items():
                     rank_elem.set(field, entry.get())
         
+        # Create directory if it doesn't exist
+        os.makedirs(os.path.dirname(xml_path), exist_ok=True)
+        
         # Write back to XML file
         try:
-            self.tree.write(XML_PATH, encoding='utf-8', xml_declaration=True)
+            self.tree.write(xml_path, encoding='utf-8', xml_declaration=True)
             messagebox.showinfo("Success", "XML file updated successfully.")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to write XML: {e}")
 
-def get_plugin_tab(parent):
-    # Create a container frame to host the plugin widget
-    container = ttk.Frame(parent)
-    editor = UnitsEditor(container)
-    editor.pack(fill="both", expand=True)
-    return "Units Editor", container 
+def get_plugin_tab(notebook):
+    """Create and return the units editor tab"""
+    return PLUGIN_TITLE, UnitsEditor(notebook) 

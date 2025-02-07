@@ -5,8 +5,45 @@ import xml.etree.ElementTree as ET
 import zipfile
 from modules.units_editor_module import UnitsEditor
 import importlib.util
+import sys
 from utils import load_file, save_file, load_mod_info, load_xml, validate_xml
+from modules import config_editor_module
+from modules.mod_files import mod_files
 
+def get_unit_file(mod_path):
+    """Get the unit XML file for a mod."""
+    global mod_files
+    if mod_files.mod_path != mod_path:
+        mod_files.mod_path = mod_path
+        mod_files.scan_mod_directory()
+    return mod_files.get_unit_file()
+
+def get_equipment_file(mod_path):
+    """Get the equipment binds XML file for a mod."""
+    global mod_files
+    # Only scan if the path has changed
+    if mod_files.mod_path != mod_path:
+        mod_files.mod_path = mod_path
+        mod_files.scan_mod_directory()
+    return mod_files.get_equipment_file()
+
+def get_entities_file(mod_path):
+    """Get the entities XML file for a mod."""
+    global mod_files
+    # Only scan if the path has changed
+    if mod_files.mod_path != mod_path:
+        mod_files.mod_path = mod_path
+        mod_files.scan_mod_directory()
+    return mod_files.get_entities_file()
+
+def get_gui_file(mod_path):
+    """Get the GUI XML file for a mod."""
+    global mod_files
+    # Only scan if the path has changed
+    if mod_files.mod_path != mod_path:
+        mod_files.mod_path = mod_path
+        mod_files.scan_mod_directory()
+    return mod_files.get_gui_file()
 
 def create_editor_tab(parent, file_path, tab_label):
     """Create a standard editor tab with text area and save button"""
@@ -38,18 +75,27 @@ def create_editor_tab(parent, file_path, tab_label):
 
 
 def package_mod():
-    # Package the mod folder: "Example mod/Baby seals"
-    mod_dir = os.path.join("Example mod", "Baby seals")
+    # Get current configuration
+    config = config_editor_module.load_config()
+    mod_path = config.get("mod_path", "")
+    current_mod = config.get("last_used_mod", "")
+    
+    if not mod_path or not current_mod:
+        messagebox.showerror("Error", "No mod path or current mod configured")
+        return
+        
+    mod_dir = os.path.join(mod_path, current_mod)
     if not os.path.isdir(mod_dir):
         messagebox.showerror("Error", f"Mod folder not found: {mod_dir}")
         return
-    zip_filename = "baby_seals_mod.zip"
+        
+    zip_filename = f"{current_mod}.zip"
     try:
         with zipfile.ZipFile(zip_filename, "w", zipfile.ZIP_DEFLATED) as zipf:
             for root_dir, dirs, files in os.walk(mod_dir):
                 for file in files:
                     file_path = os.path.join(root_dir, file)
-                    arcname = os.path.relpath(file_path, os.path.join("Example mod"))
+                    arcname = os.path.relpath(file_path, mod_path)
                     zipf.write(file_path, arcname)
         messagebox.showinfo("Package Mod", f"Mod packaged as {zip_filename}")
     except Exception as e:
@@ -57,8 +103,16 @@ def package_mod():
 
 
 def preview_mod_info():
-    # Opens a new window to preview mod info from mod.xml
-    mod_file = os.path.join("Example mod", "Baby seals", "mod.xml")
+    # Get current configuration
+    config = config_editor_module.load_config()
+    mod_path = config.get("mod_path", "")
+    current_mod = config.get("last_used_mod", "")
+    
+    if not mod_path or not current_mod:
+        messagebox.showerror("Error", "No mod path or current mod configured")
+        return
+        
+    mod_file = os.path.join(mod_path, current_mod, "mod.xml")
     mod_info = load_mod_info(mod_file)
     preview_win = tk.Toplevel()
     preview_win.title("Mod Info Preview")
@@ -79,15 +133,36 @@ def preview_mod_info():
 
 def create_xml_validator_tab(parent):
     frame = ttk.Frame(parent)
-    # List of XML files to validate
-    xml_files = [
-        os.path.join("Example mod", "Baby seals", "mod.xml"),
-        os.path.join("Example mod", "Baby seals", "gui", "seals_deploy.xml"),
-        os.path.join("Example mod", "Baby seals", "units", "seals_unit.xml"),
-        os.path.join("Example mod", "Baby seals", "units", "seals_human_identities.xml"),
-        os.path.join("Example mod", "Baby seals", "entities", "seals_humans.xml"),
-        os.path.join("Example mod", "Baby seals", "equipment", "seals_binds.xml")
-    ]
+    
+    # Get current configuration
+    config = config_editor_module.load_config()
+    mod_path = os.path.normpath(config.get("mod_path", ""))
+    current_mod = config.get("last_used_mod", "")
+    
+    if not mod_path or not current_mod:
+        label = ttk.Label(frame, text="Please configure mod path and select a mod first")
+        label.pack(padx=5, pady=5)
+        return frame
+        
+    mod_dir = os.path.normpath(os.path.join(mod_path, current_mod))
+    
+    # Find all XML files in the mod directory recursively
+    xml_files = []
+    if os.path.exists(mod_dir):
+        for root, dirs, files in os.walk(mod_dir):
+            for file in files:
+                if file.endswith('.xml'):
+                    full_path = os.path.normpath(os.path.join(root, file))
+                    xml_files.append(full_path)
+    
+    # Sort files for consistent display
+    xml_files.sort()
+    
+    if not xml_files:
+        label = ttk.Label(frame, text="No XML files found in the current mod")
+        label.pack(padx=5, pady=5)
+        return frame
+    
     label = ttk.Label(frame, text="Select XML file to validate:")
     label.pack(anchor="w", padx=5, pady=5)
 
@@ -102,37 +177,107 @@ def create_xml_validator_tab(parent):
     return frame
 
 
-def load_plugins(notebook):
+def load_plugins(notebook, force_reload=False):
     """Load all plugin modules from the modules directory"""
     plugins_dir = os.path.join(os.path.dirname(__file__), "modules")
     if not os.path.isdir(plugins_dir):
-        return
+        messagebox.showerror("Error", "Modules directory not found")
+        return {}
         
+    # Add modules directory to Python path if not already there
+    if plugins_dir not in sys.path:
+        sys.path.insert(0, os.path.dirname(__file__))
+        
+    # Keep track of loaded modules and their widgets
+    loaded_modules = {}
+    
+    # First, remove any existing tabs except configuration
+    for tab_id in notebook.tabs():
+        tab_text = notebook.tab(tab_id, "text")
+        if tab_text != config_editor_module.PLUGIN_TITLE:
+            notebook.forget(tab_id)
+    
+    # Load all non-config modules first
     for filename in os.listdir(plugins_dir):
-        if filename.endswith("_module.py"):
+        if filename.endswith("_module.py") and filename != "config_editor_module.py":
             try:
-                plugin_path = os.path.join(plugins_dir, filename)
-                spec = importlib.util.spec_from_file_location(filename[:-3], plugin_path)
-                module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
+                module_name = filename[:-3]
                 
+                # Import or reload module
+                if module_name in sys.modules and force_reload:
+                    module = importlib.reload(sys.modules[module_name])
+                else:
+                    module = importlib.import_module(f"modules.{module_name}")
+                    sys.modules[module_name] = module
+                
+                # Create tab if module has the required interface
                 if hasattr(module, "get_plugin_tab"):
                     title, widget = module.get_plugin_tab(notebook)
                     notebook.add(widget, text=title)
+                    loaded_modules[module_name] = widget
+                    
             except Exception as e:
                 print(f"Failed to load plugin {filename}: {e}")
+                import traceback
+                traceback.print_exc()
+    
+    # Load or reload config module last
+    try:
+        if force_reload and "config_editor_module" in sys.modules:
+            importlib.reload(sys.modules["config_editor_module"])
+        
+        # Remove existing config tab if it exists
+        for tab_id in notebook.tabs():
+            tab_text = notebook.tab(tab_id, "text")
+            if tab_text == config_editor_module.PLUGIN_TITLE:
+                notebook.forget(tab_id)
+                break
+        
+        # Add new config tab
+        title, widget = config_editor_module.get_plugin_tab(notebook)
+        notebook.add(widget, text=title)
+        loaded_modules["config_editor_module"] = widget
+        
+        # Move config tab to the end
+        tabs = list(notebook.tabs())
+        if len(tabs) > 1:
+            notebook.insert(tabs[-1], tabs[0])
+            
+    except Exception as e:
+        print(f"Failed to load configuration module: {e}")
+        import traceback
+        traceback.print_exc()
+                
+    return loaded_modules
+
+
+def reload_plugins(notebook):
+    """Reload all plugin modules"""
+    return load_plugins(notebook, force_reload=True)
 
 
 def main():
     root = tk.Tk()
-    root.title("Modding Tool for Baby Seals Mod")
+    
+    # Load initial configuration
+    config = config_editor_module.load_config()
+    root.title(f"Door Kickers 2 Mod Tools - {config.get('last_used_mod', '')}")
 
     # Create Notebook
     notebook = ttk.Notebook(root)
     notebook.pack(fill="both", expand=True)
 
     # Load dynamic plugins from modules folder
-    load_plugins(notebook)
+    loaded_modules = load_plugins(notebook)
+
+    # Handle configuration changes
+    def on_config_change(event):
+        config = config_editor_module.load_config()
+        root.title(f"Door Kickers 2 Mod Tools - {config.get('last_used_mod', '')}")
+        # Reload plugins to reflect new configuration
+        load_plugins(notebook, force_reload=True)
+
+    root.bind_all("<<ConfigurationChanged>>", on_config_change)
 
     # Center the main window
     root.update_idletasks()

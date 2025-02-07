@@ -3,12 +3,14 @@ from tkinter import ttk, messagebox
 import xml.etree.ElementTree as ET
 import os
 import shutil
+from modules import config_editor_module, mod_files
+from modding_tool import get_gui_file
 
-def get_plugin_tab(parent):
-    container = ttk.Frame(parent)
-    editor = GUIEditor(container)
-    editor.pack(fill="both", expand=True)
-    return "GUI Editor", container
+PLUGIN_TITLE = "GUI Editor"
+
+def get_plugin_tab(notebook):
+    """Create and return the GUI editor tab"""
+    return PLUGIN_TITLE, GUIEditor(notebook)
 
 class DraggableFrame(tk.Frame):
     def __init__(self, parent, editor, title, color, row_index, width_cells=2, height_cells=1, *args, **kwargs):
@@ -235,34 +237,38 @@ class GUIEditor(tk.Frame):
         self.next_box_number = 1
         self.selected_box = None
         self.available_classes = []  # Store available classes from XML
+        self.config = config_editor_module.load_config()
+        self.mod_files = mod_files.ModFiles(self.get_mod_path())  # Initialize ModFiles
         self.load_available_classes()  # Load classes when initializing
         self.build_ui()
     
-    def load_available_classes(self):
-        try:
-            xml_path = "Example mod/Baby seals/units/seals_unit.xml"
-            tree = ET.parse(xml_path)
-            root = tree.getroot()
-            
-            # Find all Class elements and get their name attributes (not nameUI)
-            classes = root.findall(".//Class")
-            self.available_classes = []
-            for cls in classes:
-                class_name = cls.get("name", "")
-                if class_name:
-                    # Remove the "Class" suffix for display
-                    display_name = class_name[:-5] if class_name.endswith("Class") else class_name
-                    print(f"Found class with name: {class_name}, display as: {display_name}")
-                    self.available_classes.append(display_name)
-            
-            if not self.available_classes:
-                print("Warning: No classes found in units XML")
-                self.available_classes = ["Assaulter"]  # Default fallback
-                
-        except Exception as e:
-            print(f"Failed to load classes from XML: {e}")
-            self.available_classes = ["Assaulter"]  # Default fallback
+    def get_mod_path(self):
+        """Get the current mod path based on configuration"""
+        mod_path = self.config.get("mod_path", "")
+        current_mod = self.config.get("last_used_mod", "")
+        if not mod_path or not current_mod:
+            return None
+        return os.path.join(mod_path, current_mod)
     
+    def get_xml_path(self):
+        """Get the current GUI XML file path based on configuration"""
+        mod_path = self.get_mod_path()
+        if not mod_path:
+            return None
+        # Use the centralized file system to get the GUI file path
+        return get_gui_file(mod_path)
+    
+    def load_available_classes(self):
+        """Load available classes from the unit file"""
+        print("[GUIEditor] Loading available classes...")
+        # Get classes from the centralized mod_files
+        classes = self.mod_files.get_available_classes()
+        # Add "unused" as a special class if not already present
+        if "unused" not in classes:
+            classes.append("unused")
+        self.available_classes = classes
+        print(f"[GUIEditor] Available classes: {', '.join(self.available_classes)}")
+
     def build_ui(self):
         # Main container
         self.main_container = tk.Frame(self, width=460)
@@ -458,78 +464,27 @@ class GUIEditor(tk.Frame):
             slot_label = ttk.Label(slot_frame, text=f"Slot {i+1} [{current_class}]:")
             slot_label.pack(side='left', padx=5)
             
-            print(f"Creating dropdown for slot {i}:")
-            print(f"  Current class: {current_class}")
-            print(f"  Available classes: {['unused'] + self.available_classes}")
-            
             # Create a StringVar for the dropdown
             slot_var = tk.StringVar(value=current_class)
             
-            # Create the dropdown
-            slot_dropdown = ttk.Combobox(slot_frame, textvariable=slot_var, values=["unused"] + self.available_classes, state='readonly')
+            # Create the dropdown with available classes
+            slot_dropdown = ttk.Combobox(slot_frame, textvariable=slot_var, values=self.available_classes, state='readonly')
             slot_dropdown.pack(side='left', fill='x', expand=True, padx=5)
             
             # Create a callback function that captures the current values
             def make_callback(slot_index, dropdown, frame, label):
                 def callback(*args):
                     selected_class = dropdown.get()
-                    print(f"\n{'='*50}")
-                    print(f"DROPDOWN CHANGE DETECTED")
-                    print(f"Box: {frame.title}")
-                    print(f"Slot: {slot_index}")
-                    print(f"Previous class: {frame.get_slot_class(slot_index)}")
-                    print(f"New class: {selected_class}")
-                    print(f"Box position: {frame.get_xml_origin()}")
-                    
                     # Update the slot class
                     frame.set_slot_class(slot_index, selected_class)
-                    
                     # Update the label to show new class
                     label.config(text=f"Slot {slot_index+1} [{selected_class}]:")
-                    
-                    # Calculate slot position
-                    xml_x, xml_y = frame.get_xml_position()
-                    print(f"XML position: x={xml_x}, y={xml_y}")
-                    
-                    if frame.width_cells == 2:  # 2x1 box
-                        base_x = xml_x + (-45)
-                        if xml_x == 98:  # Right position
-                            x_pos = base_x + (0 if slot_index == 0 else 90)
-                        elif xml_x == 0:  # Middle position
-                            x_pos = base_x + (0 if slot_index == 0 else 90)
-                        else:  # Left position (-98)
-                            x_pos = base_x + (0 if slot_index == 0 else 90)
-                        y_pos = xml_y + (-24)
-                    else:  # 4x1 or 4x2 box
-                        base_x = -2 + (-138)
-                        x_pos = base_x + (slot_index % 4 * 90)
-                        if frame.height_cells == 2:  # 4x2 box
-                            container_y = -299
-                            if slot_index >= 4:  # Second row
-                                y_pos = container_y + (-3) - 70
-                            else:  # First row
-                                y_pos = container_y + (-3) + 30
-                        else:  # 4x1 box
-                            y_pos = xml_y + (-24)
-                    
-                    print(f"Calculated slot position:")
-                    print(f"  Base X: {base_x}")
-                    print(f"  Final X: {x_pos}")
-                    print(f"  Final Y: {y_pos}")
-                    print(f"Moving slot to {selected_class}Class container")
-                    
-                    # Save the layout to update XML
-                    self.save_layout(show_popup=False)
-                    print("Layout saved with updated slot position")
-                    print("="*50)
                 return callback
             
             # Bind both the trace and the dropdown selection event
             callback = make_callback(i, slot_dropdown, frame, slot_label)
             slot_var.trace_add('write', callback)
             slot_dropdown.bind('<<ComboboxSelected>>', callback)
-            
-            print(f"  Added change callbacks for slot {i}")
         
         info_text = f"""Box: {frame.title}
 Position: ({frame.winfo_x()}, {frame.winfo_y()})
@@ -543,27 +498,25 @@ Row Index: {frame.row_index}"""
         print("Info panel update complete")
     
     def get_mod_name(self):
-        try:
-            mod_xml_path = "Example mod/Baby seals/mod.xml"
-            tree = ET.parse(mod_xml_path)
-            root = tree.getroot()
-            return root.get("title", "BABY SEALS")  # Default to BABY SEALS if not found
-        except Exception as e:
-            print(f"Failed to read mod name: {e}")
-            return "BABY SEALS"
+        """Get the faction name from the centralized mod_files"""
+        return self.mod_files.get_mod_name()
     
     def save_layout(self, show_popup=True):
         try:
-            xml_path = "Example mod/Baby seals/gui/seals_deploy.xml"
-            mod_name = self.get_mod_name().upper()
-            
-            print("Starting save_layout")
+            xml_path = self.get_xml_path()
+            if not xml_path:
+                messagebox.showerror("Error", "No mod path configured")
+                return
+                
+            # Create directory if it doesn't exist
+            os.makedirs(os.path.dirname(xml_path), exist_ok=True)
             
             # Create the base XML structure
             root = ET.Element("GUIItems")
             
             # Add EventActionBatch
             event_batch = ET.SubElement(root, "EventActionBatch", name="GAME_GUI_LOADTIME_ACTIONS")
+            mod_name = self.get_mod_name().upper()
             ET.SubElement(event_batch, "Action", type="Show", target=mod_name)
             
             # Add main container
@@ -649,49 +602,22 @@ Row Index: {frame.row_index}"""
                             texture="data/textures/gui/deploy/class_name_icon_assaulter.dds",
                             color="ffffffff")
                 
-                # Add deployment slots
-                slot_count = 0
+                # Add empty slot containers (without the actual slots)
                 if frame.height_cells == 2:  # 4x2 box
                     origins = frame.get_slot_container_origin()
-                    slots_per_row = 4
-                    
-                    # Create first row of slots
-                    first_row = ET.SubElement(class_container, "Item", origin=origins[0])
-                    for slot in range(slots_per_row):
-                        slot_x = slot * 90
-                        slot_img = ET.SubElement(first_row, "StaticImage",
-                                               name=f"#slot{slot_count}",
-                                               origin=f"{slot_x} 0")
-                        ET.SubElement(slot_img, "RenderObject2D",
-                                    texture="data/textures/gui/deploy/deploy_trooperbackground_01.tga")
-                        slot_count += 1
-                    
-                    # Create second row of slots
-                    second_row = ET.SubElement(class_container, "Item", origin=origins[1])
-                    for slot in range(slots_per_row):
-                        slot_x = slot * 90
-                        slot_img = ET.SubElement(second_row, "StaticImage",
-                                               name=f"#slot{slot_count}",
-                                               origin=f"{slot_x} 0")
-                        ET.SubElement(slot_img, "RenderObject2D",
-                                    texture="data/textures/gui/deploy/deploy_trooperbackground_01.tga")
-                        slot_count += 1
+                    # Create empty containers for each row
+                    ET.SubElement(class_container, "Item", origin=origins[0])
+                    ET.SubElement(class_container, "Item", origin=origins[1])
                 else:  # 2x1 or 4x1 box
-                    slots_row = ET.SubElement(class_container, "Item", origin=frame.get_slot_container_origin())
-                    for slot in range(frame.width_cells):
-                        slot_x = slot * 90
-                        slot_img = ET.SubElement(slots_row, "StaticImage",
-                                               name=f"#slot{slot_count}",
-                                               origin=f"{slot_x} 0")
-                        ET.SubElement(slot_img, "RenderObject2D",
-                                    texture="data/textures/gui/deploy/deploy_trooperbackground_01.tga")
-                        slot_count += 1
+                    ET.SubElement(class_container, "Item", origin=frame.get_slot_container_origin())
             
             # Create class-specific parent Items after UI elements
             global_slot_count = 0  # Track total slots across all classes
             for class_name in self.available_classes + ["unused"]:
+                # Ensure we don't add "Class" if it's already there
+                container_name = class_name + "Class" if not class_name.endswith("Class") else class_name
                 class_item = ET.SubElement(container, "StaticImage", 
-                                         name=f"{class_name}Class",
+                                         name=container_name,
                                          origin="0 0")
                 
                 # Add slots for this class
@@ -699,7 +625,7 @@ Row Index: {frame.row_index}"""
                     frame = frame[1]  # Get the frame object from the tuple
                     for slot_idx in range(frame.total_slots):
                         current_class = frame.get_slot_class(slot_idx)
-                        if current_class + "Class" == class_name + "Class":
+                        if current_class == container_name:  # Compare with the container name directly
                             # Calculate slot position
                             xml_x, xml_y = frame.get_xml_position()
                             if frame.width_cells == 2:  # 2x1 box
@@ -779,17 +705,22 @@ Row Index: {frame.row_index}"""
             for widget in self.slot_settings_frame.winfo_children():
                 widget.destroy()
 
-    def __str__(self):
-        """String representation of the editor state"""
-        return f"GUIEditor(boxes={len(self.draggable_frames)}, next_box={self.next_box_number})"
-
-    def __repr__(self):
-        """Detailed representation of the editor state"""
-        return f"GUIEditor(boxes={list(self.draggable_frames.keys())}, next_box={self.next_box_number})"
-
     def reload_xml(self):
         try:
-            xml_path = "Example mod/Baby seals/gui/seals_deploy.xml"
+            xml_path = self.get_xml_path()
+            if not xml_path:
+                messagebox.showerror("Error", "No mod path configured")
+                return
+                
+            if not os.path.exists(xml_path):
+                # Create basic structure
+                root = ET.Element("GUIItems")
+                event_batch = ET.SubElement(root, "EventActionBatch", name="GAME_GUI_LOADTIME_ACTIONS")
+                container = ET.SubElement(root, "Item", name=self.get_mod_name().upper(), origin="0 -454", 
+                                       hidden="true", align="rt", sizeX="380")
+                tree = ET.ElementTree(root)
+                tree.write(xml_path, encoding='utf-8', xml_declaration=True)
+            
             tree = ET.parse(xml_path)
             root = tree.getroot()
             
@@ -799,9 +730,18 @@ Row Index: {frame.row_index}"""
             self.draggable_frames.clear()
             self.next_box_number = 1
             
-            # Find the main container (BABY SEALS)
-            container = root.find(".//Item[@name='BABY SEALS']")
+            # Find the main container using the mod name
+            mod_name = self.get_mod_name().upper()
+            container = root.find(f".//Item[@name='{mod_name}']")
+            print(f"Looking for container with name: {mod_name}")
+            
+            # If not found with mod name, try FACTION as fallback
+            if container is None:
+                container = root.find(".//Item[@name='FACTION']")
+                print("Mod name container not found, trying FACTION container")
+            
             if container is not None:
+                print(f"Found container: {container.get('name')}")
                 # First, load any existing slot assignments from class containers
                 existing_slots = {}  # Store slot assignments from class containers
                 for class_item in container.findall("StaticImage"):
@@ -820,16 +760,21 @@ Row Index: {frame.row_index}"""
                     if not name.endswith("Class") or not name.startswith("Row"):
                         continue
                         
+                    print(f"Processing box element: {name}")
                     # Get the XML origin
                     origin = class_elem.get("origin", "0 0").split()
                     xml_x = int(origin[0])
                     xml_y = int(origin[1])
                     
                     # Determine box type and row index based on XML position and size
-                    render_obj = class_elem.find("RenderObject2D")
+                    render_obj = class_elem.find(".//RenderObject2D")  # Use .// to search deeper
                     if render_obj is not None:
                         size_x = int(render_obj.get("sizeX", "184"))
                         size_y = int(render_obj.get("sizeY", "148"))
+                        print(f"Found box dimensions: {size_x}x{size_y}")
+                    else:
+                        print("No RenderObject2D found for box")
+                        continue
                     
                     if size_x == 184:  # 2x1 box
                         width_cells = 2
@@ -869,8 +814,10 @@ Row Index: {frame.row_index}"""
                         else:
                             row_index = (71 - xml_y) // 148
                     else:
+                        print(f"Skipping box with unknown dimensions: {size_x}x{size_y}")
                         continue
 
+                    print(f"Creating frame: {name} at row {row_index}")
                     # Create the frame
                     title = name.replace("Class", "")
                     frame = DraggableFrame(self.grid_container, self, title, "#cb893e", 
@@ -885,6 +832,7 @@ Row Index: {frame.row_index}"""
                     if class_name_elem is not None:
                         display_name = class_name_elem.get("text", "ASSAULTER")
                         frame.set_class_text(display_name)
+                        print(f"Set display name: {display_name}")
                     
                     # Calculate slot positions and find their assignments
                     if frame.width_cells == 2:  # 2x1 box
@@ -948,9 +896,13 @@ Row Index: {frame.row_index}"""
                         self.next_box_number = max(self.next_box_number, row_num + 1)
                     except (IndexError, ValueError):
                         pass
+            else:
+                print("No container found in XML")
             
             self.update_row_markers()
             
         except Exception as e:
             messagebox.showerror("Error", f"Failed to reload XML: {str(e)}")
             print(f"XML reload error details: {str(e)}")
+            import traceback
+            traceback.print_exc()
