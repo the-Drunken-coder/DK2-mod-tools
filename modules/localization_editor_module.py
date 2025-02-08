@@ -43,11 +43,18 @@ class LocalizationEditor(tk.Frame):
             return
             
         try:
-            if os.path.exists(file_path):
-                with open(file_path, "r", encoding="utf-8") as f:
-                    content = f.read()
-            else:
-                content = "<!-- Create new localization strings here -->\n<strings>\n</strings>"
+            if not os.path.exists(os.path.dirname(file_path)):
+                self.text_area.delete("1.0", tk.END)
+                self.text_area.insert("1.0", "Directory does not exist. Please create it first.")
+                return
+                
+            if not os.path.exists(file_path):
+                self.text_area.delete("1.0", tk.END)
+                self.text_area.insert("1.0", "File does not exist. Please create it first.")
+                return
+                
+            with open(file_path, "r", encoding="utf-8") as f:
+                content = f.read()
             self.text_area.delete("1.0", tk.END)
             self.text_area.insert("1.0", content)
         except Exception as e:
@@ -59,10 +66,12 @@ class LocalizationEditor(tk.Frame):
             messagebox.showerror("Error", "No mod path configured")
             return
             
-        try:
-            # Create localization directory if it doesn't exist
-            os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        # Check if directory exists
+        if not os.path.exists(os.path.dirname(file_path)):
+            messagebox.showerror("Error", "Directory does not exist. Please create it first.")
+            return
             
+        try:
             content = self.text_area.get("1.0", tk.END)
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(content)

@@ -47,45 +47,50 @@ class EntitiesEditor(tk.Frame):
         if not mod_path:
             return None
             
-        # Find all *_humans.xml files in the entities directory
+        # Find all XML files in the entities directory
         entities_dir = os.path.join(mod_path, "entities")
         if not os.path.exists(entities_dir):
-            os.makedirs(entities_dir, exist_ok=True)
-            return os.path.join(entities_dir, "humans.xml")  # Default fallback
+            return None
             
-        # Find all *_humans.xml files
+        # First try files with 'human' in the name
         human_files = []
         for file in os.listdir(entities_dir):
-            if file.endswith("_humans.xml"):
+            if file.lower().endswith('.xml'):
                 full_path = os.path.join(entities_dir, file)
                 human_files.append((full_path, os.path.getsize(full_path)))
-                
-        # If no *_humans.xml files found, use default humans.xml
-        if not human_files:
-            return os.path.join(entities_dir, "humans.xml")
-            
-        # Sort by file size (largest first) and return the path
+        
+        # Sort by size (largest first)
         human_files.sort(key=lambda x: x[1], reverse=True)
-        return human_files[0][0]
+        
+        # Check each file for type="Human"
+        for file_path, _ in human_files:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    if 'type="Human"' in content:
+                        log(f"Found human entities in file: {os.path.basename(file_path)}")
+                        return file_path
+            except Exception as e:
+                log(f"Error reading file {file_path}: {e}")
+                continue
+        
+        # If no file found with type="Human", return None
+        log("No file found containing human entities")
+        return None
 
     def load_xml(self):
         try:
             xml_path = self.get_xml_path()
             if not xml_path:
-                messagebox.showerror("Error", "No mod path configured")
+                messagebox.showinfo("Info", "No human entities file found. Please create one in your mod's entities folder.")
                 return
                 
             if not os.path.exists(xml_path):
-                # Create basic structure
-                self.unit_elem = ET.Element("Entities")
-                # Add a comment explaining the file
-                self.unit_elem.append(ET.Comment("Human entity definitions for the mod"))
-                self.tree = ET.ElementTree(self.unit_elem)
-                self.tree.write(xml_path, encoding='utf-8', xml_declaration=True)
-                messagebox.showinfo("Info", "Created new humans.xml file with default structure")
-            else:
-                self.tree = ET.parse(xml_path)
-                self.unit_elem = self.tree.getroot()
+                messagebox.showinfo("Info", "No human entities file found. Please create one in your mod's entities folder.")
+                return
+                
+            self.tree = ET.parse(xml_path)
+            self.unit_elem = self.tree.getroot()
             
             self.entities = self.unit_elem.findall('Entity')
             if not self.entities:

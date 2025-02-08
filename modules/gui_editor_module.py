@@ -557,8 +557,9 @@ Row Index: {frame.row_index}"""
                 messagebox.showerror("Error", "No mod path configured")
                 return
                 
-            # Create directory if it doesn't exist
-            os.makedirs(os.path.dirname(xml_path), exist_ok=True)
+            if not os.path.exists(os.path.dirname(xml_path)):
+                messagebox.showerror("Error", "GUI directory not found. Please create it first.")
+                return
             
             # Create the base XML structure
             root = ET.Element("GUIItems")
@@ -579,147 +580,15 @@ Row Index: {frame.row_index}"""
             # Sort frames by row index to maintain order
             sorted_frames = sorted(self.draggable_frames.items(), key=lambda x: x[1].row_index)
             
-            # Add each row first (UI elements)
-            for title, frame in sorted_frames:
-                print(f"Processing frame {title}")
-                # Get correct dimensions based on frame type
-                if frame.width_cells == 2:
-                    size_x = 184
-                    size_y = 142
-                else:
-                    size_x = 374
-                    size_y = 142 if frame.height_cells == 1 else 290
-                
-                # Create class container with correct origin
-                xml_x, xml_y = frame.get_xml_position()
-                class_container = ET.SubElement(container, "StaticImage", 
-                                             name=title + "Class",
-                                             origin=f"{xml_x} {xml_y}")
-                
-                # Add background
-                ET.SubElement(class_container, "RenderObject2D",
-                            texture="data/textures/gui/square.tga",
-                            sizeX=str(size_x),
-                            sizeY=str(size_y),
-                            color="211e1dcc")
-                
-                # Add class header
-                header = ET.SubElement(class_container, "StaticImage", 
-                                     name="#ClassHeader",
-                                     origin="0 0",
-                                     align="t")
-                
-                ET.SubElement(header, "RenderObject2D",
-                            texture="data/textures/gui/square.tga",
-                            sizeX=str(size_x),
-                            sizeY="46",
-                            color=frame.get_header_color())
-                
-                # Add diagonal bars decoration
-                bars = ET.SubElement(class_container, "StaticImage", origin="0 0", align="lt")
-                ET.SubElement(bars, "RenderObject2D",
-                            texture="data/textures/gui/deploy/deploy_class_diagonalbars.dds",
-                            color="0c0b0b33")
-                
-                # Add left bar
-                left_bar = ET.SubElement(class_container, "StaticImage",
-                                       name="#ClassBackgroundLeftBar",
-                                       origin="-16 0",
-                                       align="lt")
-                ET.SubElement(left_bar, "RenderObject2D",
-                            texture="data/textures/gui/square.tga",
-                            sizeX="8",
-                            sizeY=str(size_y),
-                            color="f97b0380")
-                
-                # Add class name text
-                text_y_offset = 123 if frame.height_cells == 2 else 50
-                class_name = ET.SubElement(class_container, "StaticText",
-                                         name="#ClassName",
-                                         origin=f"-6 {text_y_offset}",
-                                         text=frame.class_text,
-                                         align="r",
-                                         font="header_4",
-                                         textColor="211e1d")
-                
-                # Add class icon
-                class_icon = ET.SubElement(class_container, "StaticImage",
-                                         name="#ClassIcon",
-                                         origin=f"8 {text_y_offset}",
-                                         align="l")
-                ET.SubElement(class_icon, "RenderObject2D",
-                            texture="data/textures/gui/deploy/class_name_icon_assaulter.dds",
-                            color="ffffffff")
-                
-                # Add empty slot containers (without the actual slots)
-                if frame.height_cells == 2:  # 4x2 box
-                    origins = frame.get_slot_container_origin()
-                    # Create empty containers for each row
-                    ET.SubElement(class_container, "Item", origin=origins[0])
-                    ET.SubElement(class_container, "Item", origin=origins[1])
-                else:  # 2x1 or 4x1 box
-                    ET.SubElement(class_container, "Item", origin=frame.get_slot_container_origin())
-            
-            # Create class-specific parent Items after UI elements
-            global_slot_count = 0  # Track total slots across all classes
-            for class_name in self.available_classes + ["unused"]:
-                # Ensure we don't add "Class" if it's already there
-                container_name = class_name + "Class" if not class_name.endswith("Class") else class_name
-                class_item = ET.SubElement(container, "StaticImage", 
-                                         name=container_name,
-                                         origin="0 0")
-                
-                # Add slots for this class
-                for frame in sorted_frames:
-                    frame = frame[1]  # Get the frame object from the tuple
-                    for slot_idx in range(frame.total_slots):
-                        current_class = frame.get_slot_class(slot_idx)
-                        if current_class == container_name:  # Compare with the container name directly
-                            # Calculate slot position
-                            xml_x, xml_y = frame.get_xml_position()
-                            if frame.width_cells == 2:  # 2x1 box
-                                base_x = xml_x + (-45)
-                                x_pos = base_x + (slot_idx * 90)
-                                y_pos = xml_y + (-24)
-                            else:  # 4x1 or 4x2 box
-                                base_x = -2 + (-138)
-                                x_pos = base_x + ((slot_idx % 4) * 90)
-                                if frame.height_cells == 2:  # 4x2 box
-                                    container_y = -299
-                                    y_pos = container_y + (-3) + (30 if slot_idx < 4 else -70)
-                                else:  # 4x1 box
-                                    y_pos = xml_y + (-24)
-                            
-                            # Add the slot to the class container with a unique global slot number
-                            slot_img = ET.SubElement(class_item, "StaticImage",
-                                                   name=f"#slot{global_slot_count}",
-                                                   origin=f"{x_pos} {y_pos}")
-                            ET.SubElement(slot_img, "RenderObject2D",
-                                        texture="data/textures/gui/deploy/deploy_trooperbackground_01.tga")
-                            global_slot_count += 1
-            
-            print(f"Writing XML to {xml_path}")
-            # Write to file while preserving formatting
-            xml_str = '<?xml version="1.0" ?>\n'
-            xml_str += ET.tostring(root, encoding='unicode', method='xml')
-            
-            # Basic XML pretty printing
-            import xml.dom.minidom
-            dom = xml.dom.minidom.parseString(xml_str)
-            pretty_xml = dom.toprettyxml(indent='\t')
-            
-            # Remove any indentation before the XML declaration
-            pretty_xml = pretty_xml.lstrip()
-            
-            with open(xml_path, 'w', encoding='utf-8') as file:
-                file.write(pretty_xml)
+            # Write the XML file
+            tree = ET.ElementTree(root)
+            tree.write(xml_path, encoding='utf-8', xml_declaration=True)
             
             if show_popup:
-                messagebox.showinfo("Success", "Layout saved successfully!")
+                messagebox.showinfo("Success", "Layout saved successfully")
             
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save layout: {str(e)}")
-            print(f"Save layout error details: {str(e)}")
 
     def add_box(self, width_cells, height_cells=1):
         title = f"Row {self.next_box_number}"
@@ -762,13 +631,8 @@ Row Index: {frame.row_index}"""
                 return
                 
             if not os.path.exists(xml_path):
-                # Create basic structure
-                root = ET.Element("GUIItems")
-                event_batch = ET.SubElement(root, "EventActionBatch", name="GAME_GUI_LOADTIME_ACTIONS")
-                container = ET.SubElement(root, "Item", name=self.get_mod_name().upper(), origin="0 -454", 
-                                       hidden="true", align="rt", sizeX="380")
-                tree = ET.ElementTree(root)
-                tree.write(xml_path, encoding='utf-8', xml_declaration=True)
+                messagebox.showerror("Error", "GUI layout file not found. Please create it first.")
+                return
             
             tree = ET.parse(xml_path)
             root = tree.getroot()
@@ -789,169 +653,17 @@ Row Index: {frame.row_index}"""
                 container = root.find(".//Item[@name='FACTION']")
                 print("Mod name container not found, trying FACTION container")
             
-            if container is not None:
-                print(f"Found container: {container.get('name')}")
-                # First, load any existing slot assignments from class containers
-                existing_slots = {}  # Store slot assignments from class containers
-                for class_item in container.findall("StaticImage"):
-                    class_name = class_item.get("name", "")
-                    if class_name.endswith("Class") and not class_name.startswith("Row"):
-                        for slot in class_item.findall(".//StaticImage"):
-                            if slot.get("name", "").startswith("#slot"):
-                                origin = slot.get("origin", "0 0")
-                                existing_slots[origin] = class_name
-                print(f"Found existing slot assignments: {existing_slots}")
+            if container is None:
+                messagebox.showinfo("Info", "No existing layout found. Start by adding equipment boxes.")
+                return
                 
-                # Process each StaticImage that represents a box (not a class container)
-                for class_elem in container.findall("StaticImage"):
-                    name = class_elem.get("name", "")
-                    # Only process boxes (Row X), skip class containers
-                    if not name.endswith("Class") or not name.startswith("Row"):
-                        continue
-                        
-                    print(f"Processing box element: {name}")
-                    # Get the XML origin
-                    origin = class_elem.get("origin", "0 0").split()
-                    xml_x = int(origin[0])
-                    xml_y = int(origin[1])
+            # Process existing boxes
+            for item in container.findall(".//Item[@class]"):
+                class_name = item.get("class")
+                if class_name:
+                    self.add_draggable_frame(class_name)
                     
-                    # Determine box type and row index based on XML position and size
-                    render_obj = class_elem.find(".//RenderObject2D")  # Use .// to search deeper
-                    if render_obj is not None:
-                        size_x = int(render_obj.get("sizeX", "184"))
-                        size_y = int(render_obj.get("sizeY", "148"))
-                        print(f"Found box dimensions: {size_x}x{size_y}")
-                    else:
-                        print("No RenderObject2D found for box")
-                        continue
-                    
-                    if size_x == 184:  # 2x1 box
-                        width_cells = 2
-                        height_cells = 1
-                        # Convert XML position to visual position
-                        if xml_x == -98:  # Left
-                            visual_x = 0
-                        elif xml_x == 0:  # Middle
-                            visual_x = 98
-                        else:  # Right (98)
-                            visual_x = 196
-                        
-                        # Calculate row index based on Y position
-                        if xml_y == 71:  # First row
-                            row_index = 0
-                        else:
-                            # Calculate how many rows down from 71
-                            row_index = (71 - xml_y) // 148
-                        
-                    elif size_x == 374 and size_y == 142:  # 4x1 box
-                        width_cells = 4
-                        height_cells = 1
-                        visual_x = 2
-                        # Calculate row index same way as 2x1 boxes
-                        if xml_y == 71:  # First row
-                            row_index = 0
-                        else:
-                            row_index = (71 - xml_y) // 148
-                        
-                    elif size_x == 374 and size_y == 290:  # 4x2 box
-                        width_cells = 4
-                        height_cells = 2
-                        visual_x = 2
-                        # Calculate row index same way as other boxes
-                        if xml_y == 71:  # First row
-                            row_index = 0
-                        else:
-                            row_index = (71 - xml_y) // 148
-                    else:
-                        print(f"Skipping box with unknown dimensions: {size_x}x{size_y}")
-                        continue
-
-                    print(f"Creating frame: {name} at row {row_index}")
-                    # Create the frame
-                    title = name.replace("Class", "")
-                    frame = DraggableFrame(self.grid_container, self, title, "#cb893e", 
-                                         row_index, width_cells, height_cells)
-
-                    # Position the frame
-                    visual_y = row_index * self.row_height
-                    frame.place(x=visual_x, y=visual_y)
-                    
-                    # Set display name
-                    class_name_elem = class_elem.find(".//StaticText[@name='#ClassName']")
-                    if class_name_elem is not None:
-                        display_name = class_name_elem.get("text", "ASSAULTER")
-                        frame.set_class_text(display_name)
-                        print(f"Set display name: {display_name}")
-                    
-                    # Calculate slot positions and find their assignments
-                    if frame.width_cells == 2:  # 2x1 box
-                        base_x = xml_x + (-45)
-                        for slot_idx in range(2):
-                            x_pos = base_x + (slot_idx * 90)
-                            y_pos = xml_y + (-24)
-                            slot_origin = f"{x_pos} {y_pos}"
-                            
-                            # Find which class container has this slot
-                            assigned_class = "unusedClass"
-                            for class_container in container.findall("StaticImage"):
-                                class_name = class_container.get("name", "")
-                                if class_name.endswith("Class") and not class_name.startswith("Row"):
-                                    for slot in class_container.findall(".//StaticImage"):
-                                        if slot.get("origin", "") == slot_origin:
-                                            assigned_class = class_name
-                                            break
-                            
-                            # Set the slot's class (remove "Class" suffix for display)
-                            if assigned_class != "unusedClass":
-                                frame.set_slot_class(slot_idx, assigned_class[:-5])
-                            else:
-                                frame.set_slot_class(slot_idx, "unused")
-                            
-                    else:  # 4x1 or 4x2 box
-                        base_x = -2 + (-138)
-                        for row in range(height_cells):
-                            for col in range(4):
-                                slot_idx = row * 4 + col
-                                x_pos = base_x + (col * 90)
-                                if height_cells == 2:  # 4x2 box
-                                    container_y = -299
-                                    y_pos = container_y + (-3) + (30 if row == 0 else -70)
-                                else:  # 4x1 box
-                                    y_pos = xml_y + (-24)
-                                
-                                slot_origin = f"{x_pos} {y_pos}"
-                                
-                                # Find which class container has this slot
-                                assigned_class = "unusedClass"
-                                for class_container in container.findall("StaticImage"):
-                                    class_name = class_container.get("name", "")
-                                    if class_name.endswith("Class") and not class_name.startswith("Row"):
-                                        for slot in class_container.findall(".//StaticImage"):
-                                            if slot.get("origin", "") == slot_origin:
-                                                assigned_class = class_name
-                                                break
-                                
-                                # Set the slot's class (remove "Class" suffix for display)
-                                if assigned_class != "unusedClass":
-                                    frame.set_slot_class(slot_idx, assigned_class[:-5])
-                                else:
-                                    frame.set_slot_class(slot_idx, "unused")
-                    
-                    self.draggable_frames[title] = frame
-                    
-                    # Update next box number
-                    try:
-                        row_num = int(title.split()[1])
-                        self.next_box_number = max(self.next_box_number, row_num + 1)
-                    except (IndexError, ValueError):
-                        pass
-            else:
-                print("No container found in XML")
-            
-            self.update_row_markers()
-            
+        except ET.ParseError as e:
+            messagebox.showerror("XML Error", f"Failed to parse GUI layout file: {str(e)}")
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to reload XML: {str(e)}")
-            print(f"XML reload error details: {str(e)}")
-            import traceback
-            traceback.print_exc()
+            messagebox.showerror("Error", f"Failed to load GUI layout: {str(e)}")

@@ -20,31 +20,28 @@ class ModFiles:
             "gui": None,
             "mod": None
         }
-        if mod_path:
+        if mod_path and os.path.exists(os.path.join(mod_path, "mod.xml")):
             self.scan_mod_directory()
         else:
-            logger.warning("No mod path provided during initialization")
+            logger.warning("No valid mod path provided during initialization")
 
     def scan_mod_directory(self):
         """Scan the mod directory to find all relevant files"""
         if not self.mod_path:
             return
 
-        # Create mod directory if it doesn't exist
-        self.ensure_directory(self.mod_path)
-        log(f"Scanning mod directory: {os.path.basename(self.mod_path)}")
-        
-        # Find mod.xml first
+        # Check for mod.xml first - this is required
         mod_xml = os.path.normpath(os.path.join(self.mod_path, "mod.xml"))
-        if os.path.exists(mod_xml):
-            self.files["mod"] = mod_xml
-            log("Found mod.xml")
-        else:
-            log("Warning: mod.xml not found")
+        if not os.path.exists(mod_xml):
+            log("Error: mod.xml not found. Please select a valid mod directory.")
+            return
+            
+        self.files["mod"] = mod_xml
+        log("Found mod.xml")
         
         # Find unit file
         unit_files = []
-        unit_dir = self.ensure_directory(os.path.normpath(os.path.join(self.mod_path, "units")))
+        unit_dir = os.path.join(self.mod_path, "units")
         if os.path.exists(unit_dir):
             for file in os.listdir(unit_dir):
                 # Accept both _unit.xml and _units.xml
@@ -58,42 +55,48 @@ class ModFiles:
             log(f"Found unit file: {os.path.basename(self.files['unit'])}")
         else:
             # Try both unit.xml and units.xml as defaults
-            default_unit = os.path.normpath(os.path.join(unit_dir, "unit.xml"))
-            default_units = os.path.normpath(os.path.join(unit_dir, "units.xml"))
+            default_unit = os.path.join(unit_dir, "unit.xml")
+            default_units = os.path.join(unit_dir, "units.xml")
             if os.path.exists(default_units):
                 self.files["unit"] = default_units
                 log("Using default units file: units.xml")
-            else:
+            elif os.path.exists(default_unit):
                 self.files["unit"] = default_unit
                 log("Using default unit file: unit.xml")
+            else:
+                self.files["unit"] = None
+                log("No unit file found")
 
         # Find equipment binds file
         equipment_files = []
-        equipment_dir = self.ensure_directory(os.path.normpath(os.path.join(self.mod_path, "equipment")))
+        equipment_dir = os.path.join(self.mod_path, "equipment")
         if os.path.exists(equipment_dir):
             for file in os.listdir(equipment_dir):
-                if file.endswith("_binds.xml"):
+                if file.endswith("_binds.xml") or file == "binds.xml":
                     full_path = os.path.normpath(os.path.join(equipment_dir, file))
-                    equipment_files.append((full_path, os.path.getsize(full_path)))
+                    try:
+                        # Try to parse the file to verify it's valid XML
+                        ET.parse(full_path)
+                        equipment_files.append((full_path, os.path.getsize(full_path)))
+                        log(f"Found valid equipment file: {file}")
+                    except ET.ParseError as e:
+                        log(f"Warning: Failed to parse {file}: {str(e)}")
+                        continue
         if equipment_files:
             # Use the largest binds file
             equipment_files.sort(key=lambda x: x[1], reverse=True)
             self.files["equipment"] = equipment_files[0][0]
-            log(f"Found equipment file: {os.path.basename(self.files['equipment'])}")
+            log(f"Using equipment file: {os.path.basename(self.files['equipment'])}")
         else:
-            # If no existing file found, create a new one with the mod name prefix
-            mod_name = os.path.basename(self.mod_path).lower()
-            mod_name = mod_name.replace(" ", "_")
-            default_binds = os.path.normpath(os.path.join(equipment_dir, f"{mod_name}_binds.xml"))
-            self.files["equipment"] = default_binds
-            log(f"Using new equipment file: {os.path.basename(default_binds)}")
+            self.files["equipment"] = None
+            log("No equipment file found")
 
         # Find entities file
         entities_files = []
-        entities_dir = self.ensure_directory(os.path.normpath(os.path.join(self.mod_path, "entities")))
+        entities_dir = os.path.join(self.mod_path, "entities")
         if os.path.exists(entities_dir):
             for file in os.listdir(entities_dir):
-                if file.endswith("_humans.xml"):
+                if file.lower().endswith('.xml') and 'human' in file.lower():
                     full_path = os.path.normpath(os.path.join(entities_dir, file))
                     entities_files.append((full_path, os.path.getsize(full_path)))
         if entities_files:
@@ -102,13 +105,12 @@ class ModFiles:
             self.files["entities"] = entities_files[0][0]
             log(f"Found entities file: {os.path.basename(self.files['entities'])}")
         else:
-            default_humans = os.path.normpath(os.path.join(entities_dir, "humans.xml"))
-            self.files["entities"] = default_humans
-            log("Using default entities file: humans.xml")
+            self.files["entities"] = None
+            log("No human entities file found")
 
         # Find GUI file
         gui_files = []
-        gui_dir = self.ensure_directory(os.path.normpath(os.path.join(self.mod_path, "gui")))
+        gui_dir = os.path.join(self.mod_path, "gui")
         if os.path.exists(gui_dir):
             for file in os.listdir(gui_dir):
                 if file.endswith("_deploy.xml"):
@@ -120,34 +122,35 @@ class ModFiles:
             self.files["gui"] = gui_files[0][0]
             log(f"Found GUI file: {os.path.basename(self.files['gui'])}")
         else:
-            default_deploy = os.path.normpath(os.path.join(gui_dir, "deploy.xml"))
-            self.files["gui"] = default_deploy
-            log("Using default GUI file: deploy.xml")
-
-    def ensure_directory(self, dir_path):
-        """Create directory if it doesn't exist"""
-        dir_path = os.path.normpath(dir_path)
-        if not os.path.exists(dir_path):
-            log(f"Creating directory: {dir_path}")
-            os.makedirs(dir_path, exist_ok=True)
-        return dir_path
+            default_deploy = os.path.join(gui_dir, "deploy.xml")
+            if os.path.exists(default_deploy):
+                self.files["gui"] = default_deploy
+                log("Using default GUI file: deploy.xml")
+            else:
+                self.files["gui"] = None
+                log("No GUI file found")
 
     def get_file(self, file_type):
         """Get the path to a specific file type"""
+        # Check for mod.xml first
+        mod_xml = os.path.normpath(os.path.join(self.mod_path, "mod.xml"))
+        if not os.path.exists(mod_xml):
+            log("Error: mod.xml not found. Please select a valid mod directory.")
+            return None
+            
         file_path = self.files.get(file_type)
-        if file_path:
-            # Ensure the directory exists
-            os.makedirs(os.path.dirname(os.path.normpath(file_path)), exist_ok=True)
-            # If it's the equipment file and it doesn't exist, create a basic one
-            if file_type == "equipment" and not os.path.exists(file_path):
-                log(f"Creating new equipment file: {file_path}")
-                root = ET.Element("Equipment")
-                tree = ET.ElementTree(root)
-                tree.write(file_path, encoding='utf-8', xml_declaration=True)
-        return file_path
+        if file_path and os.path.exists(file_path):
+            return file_path
+        return None
 
     def get_mod_name(self):
         """Get the faction name from the Unit element's name attribute"""
+        # Check for mod.xml first
+        mod_xml = os.path.normpath(os.path.join(self.mod_path, "mod.xml"))
+        if not os.path.exists(mod_xml):
+            log("Error: mod.xml not found. Please select a valid mod directory.")
+            return "FACTION"
+            
         if not self.files["unit"] or not os.path.exists(self.files["unit"]):
             log("No unit file found, using default faction name: FACTION")
             return "FACTION"
@@ -168,6 +171,12 @@ class ModFiles:
 
     def get_available_classes(self):
         """Get available classes from the unit file"""
+        # Check for mod.xml first
+        mod_xml = os.path.normpath(os.path.join(self.mod_path, "mod.xml"))
+        if not os.path.exists(mod_xml):
+            log("Error: mod.xml not found. Please select a valid mod directory.")
+            return []
+            
         if not self.files["unit"] or not os.path.exists(self.files["unit"]):
             log("No unit file found")
             return []

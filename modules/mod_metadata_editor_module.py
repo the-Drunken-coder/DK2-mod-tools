@@ -33,24 +33,15 @@ class ModMetadataEditor(tk.Frame):
                 return
                 
             if not os.path.exists(xml_path):
-                # Create basic mod.xml structure
-                root = ET.Element("mod")
-                root.set("title", "")
-                root.set("description", "")
-                root.set("author", "")
-                root.set("tags", "")
-                root.set("gameVersion", "")
-                self.tree = ET.ElementTree(root)
-                self.mod_elem = root
-                # Write the file
-                os.makedirs(os.path.dirname(xml_path), exist_ok=True)
-                self.tree.write(xml_path, encoding='utf-8', xml_declaration=True)
-            else:
-                self.tree = ET.parse(xml_path)
-                root = self.tree.getroot()
-                self.mod_elem = root
+                messagebox.showerror("Error", "mod.xml not found. Please create it first.")
+                return
+                
+            self.tree = ET.parse(xml_path)
+            root = self.tree.getroot()
+            self.mod_elem = root
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load XML: {e}")
+            return
 
     def build_ui(self):
         if self.mod_elem is None:

@@ -96,8 +96,7 @@ class UnitsEditor(tk.Frame):
         # Get the full mod directory path
         mod_dir = os.path.join(mod_path, current_mod, "units")
         if not os.path.exists(mod_dir):
-            os.makedirs(mod_dir, exist_ok=True)
-            return os.path.join(mod_dir, "unit.xml")  # Default fallback
+            return None  # Don't return a path if directory doesn't exist
         
         # Find all *_unit.xml files
         unit_files = []
@@ -121,14 +120,7 @@ class UnitsEditor(tk.Frame):
             return
             
         if not os.path.exists(xml_path):
-            # Create a new unit XML file with basic structure
-            root = ET.Element("root")
-            unit = ET.SubElement(root, "Unit")
-            classes = ET.SubElement(unit, "Classes")
-            ranks = ET.SubElement(unit, "Ranks")
-            trooper_ranks = ET.SubElement(unit, "TrooperRanks")
-            self.tree = ET.ElementTree(root)
-            self.unit_elem = unit
+            messagebox.showerror("Error", "Unit file not found. Please create it first.")
             return
             
         self.tree, root = util_load_xml(xml_path)
@@ -578,61 +570,9 @@ class UnitsEditor(tk.Frame):
     def save_changes(self):
         xml_path = self.get_xml_path()
         if not xml_path:
-            messagebox.showerror("Error", "No mod path configured")
+            messagebox.showerror("Error", "No valid XML path found")
             return
             
-        # Update unit attributes
-        for field, entry in self.unit_attr_entries.items():
-            self.unit_elem.set(field, entry.get())
-        
-        # Update Classes
-        classes_elem = self.unit_elem.find('Classes')
-        if classes_elem is not None:
-            # Store existing numSlots values before clearing
-            existing_slots = {}
-            for class_elem in classes_elem.findall('Class'):
-                name = class_elem.get('name')
-                num_slots = class_elem.get('numSlots')
-                if name and num_slots:
-                    existing_slots[name] = num_slots
-            
-            # Clear existing classes to rewrite them with proper formatting
-            for child in list(classes_elem):
-                classes_elem.remove(child)
-            
-            # Add classes back with proper formatting
-            for class_elem, entries, _ in self.class_entries:
-                new_class = ET.SubElement(classes_elem, 'Class')
-                # Build ordered attributes string
-                attrs = {}
-                # Order attributes in the preferred order
-                ordered_fields = ["name", "nameUI", "description", "supply", "iconTex", "upgrades", "maxUpgradeable"]
-                for field in ordered_fields:
-                    if field in entries:
-                        value = entries[field].get().strip()
-                        if value:  # Only add non-empty values
-                            attrs[field] = value
-                
-                # Set attributes all at once for consistent ordering
-                for field, value in attrs.items():
-                    new_class.set(field, value)
-                
-                # Restore the original numSlots value if it existed
-                if attrs.get('name') in existing_slots:
-                    new_class.set('numSlots', existing_slots[attrs['name']])
-                elif class_elem.get('numSlots'):  # If not in existing_slots but class_elem has numSlots, preserve it
-                    new_class.set('numSlots', class_elem.get('numSlots'))
-                
-                # Add proper indentation
-                new_class.tail = "\n            "  # Matches vanilla indentation
-        
-        # Update Trooper Ranks
-        trooper_ranks_elem = self.unit_elem.find('TrooperRanks')
-        if trooper_ranks_elem is not None:
-            for rank_elem, entries in self.trooper_rank_entries:
-                for field, entry in entries.items():
-                    rank_elem.set(field, entry.get())
-        
         # Update Ranks
         ranks_elem = self.unit_elem.find('Ranks')
         if ranks_elem is not None:
@@ -640,8 +580,10 @@ class UnitsEditor(tk.Frame):
                 for field, entry in entries.items():
                     rank_elem.set(field, entry.get())
         
-        # Create directory if it doesn't exist
-        os.makedirs(os.path.dirname(xml_path), exist_ok=True)
+        # Check if directory exists before saving
+        if not os.path.exists(os.path.dirname(xml_path)):
+            messagebox.showerror("Error", "Directory does not exist. Please create it first.")
+            return
         
         # Write back to XML file with proper formatting
         try:

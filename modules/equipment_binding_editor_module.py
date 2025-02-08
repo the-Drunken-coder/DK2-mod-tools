@@ -144,75 +144,22 @@ class EquipmentBindingEditor(tk.Frame):
             else:
                 full_path = os.path.normpath(os.path.join(mod_path, file_path))
             
-            if not full_path:
-                return []
-            
-            # Create directory if it doesn't exist
-            os.makedirs(os.path.dirname(full_path), exist_ok=True)
-            
-            if not os.path.exists(full_path):
-                # Create basic XML structure based on file type
-                if xpath == ".//Bind":
-                    root = ET.Element("Equipment")
-                    # Add a comment explaining the file
-                    root.append(ET.Comment("Equipment bindings for classes and factions"))
-                    tree = ET.ElementTree(root)
-                    tree.write(full_path, encoding='utf-8', xml_declaration=True)
-                elif xpath == ".//Equipment":
-                    root = ET.Element("Unit")
-                    equipment = ET.SubElement(root, "Equipment")
-                    tree = ET.ElementTree(root)
-                    tree.write(full_path, encoding='utf-8', xml_declaration=True)
+            if not full_path or not os.path.exists(full_path):
+                messagebox.showerror("Error", f"File not found: {os.path.basename(file_path)}\nPlease create the file first.")
                 return []
             
             tree = ET.parse(full_path)
             root = tree.getroot()
             
-            # For equipment bindings, we need to handle all binding formats
-            if xpath == ".//Bind":
-                bindings = []
-                # Process each Bind element
-                for bind in root.findall(".//Bind"):
-                    # Format 1: <Bind eqp="X" to="Y"/>
-                    eqp_value = bind.get("eqp")
-                    to_value = bind.get("to")
-                    if eqp_value and to_value:
-                        new_bind = ET.Element("Bind")
-                        new_bind.set("eqp", str(eqp_value))
-                        new_bind.set("to", str(to_value))
-                        bindings.append(new_bind)
-                        continue
-
-                    # Format 2: <Bind eqp="X"><to name="Y"/></Bind>
-                    if eqp_value:
-                        for to in bind.findall("to"):
-                            to_value = to.get("name")
-                            if to_value:
-                                new_bind = ET.Element("Bind")
-                                new_bind.set("eqp", str(eqp_value))
-                                new_bind.set("to", str(to_value))
-                                bindings.append(new_bind)
-                        continue
-
-                    # Format 3: <Bind to="Y"><eqp name="X"/></Bind>
-                    to_value = bind.get("to")
-                    if to_value:
-                        # Handle both single eqp and multiple eqp elements
-                        for eqp in bind.findall("eqp"):
-                            eqp_value = eqp.get("name")
-                            if eqp_value:
-                                new_bind = ET.Element("Bind")
-                                new_bind.set("eqp", str(eqp_value))
-                                new_bind.set("to", str(to_value))
-                                bindings.append(new_bind)
-                
-                return bindings
-            else:
-                elements = tree.findall(xpath)
-                return elements
+            # Find all elements matching the XPath
+            elements = root.findall(xpath)
+            return elements
             
+        except ET.ParseError as e:
+            messagebox.showerror("XML Error", f"Failed to parse {os.path.basename(file_path)}: {str(e)}")
+            return []
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to load XML file {file_path}: {e}")
+            messagebox.showerror("Error", f"Failed to load {os.path.basename(file_path)}: {str(e)}")
             return []
 
     def load_all_bindings(self):
@@ -331,51 +278,42 @@ class EquipmentBindingEditor(tk.Frame):
             
             log(f"Viewing XML file: {os.path.basename(full_path)}")
             
-            # Ensure directory exists
-            os.makedirs(os.path.dirname(full_path), exist_ok=True)
+            # Check if directory exists
+            if not os.path.exists(os.path.dirname(full_path)):
+                messagebox.showerror("Error", "Directory does not exist. Please create it first.")
+                return
             
-            # Create basic file if it doesn't exist
+            # Check if file exists
             if not os.path.exists(full_path):
-                log(f"Creating new equipment file: {full_path}")
-                root = ET.Element("Equipment")
-                tree = ET.ElementTree(root)
-                tree.write(full_path, encoding='utf-8', xml_declaration=True)
+                messagebox.showerror("Error", "File does not exist. Please create it first.")
+                return
             
-            # Read the file content
-            with open(full_path, 'r') as file:
-                content = file.read()
+            # Create viewer window
+            viewer = tk.Toplevel(self)
+            viewer.title(f"XML Viewer - {os.path.basename(full_path)}")
+            viewer.geometry("800x600")
             
-            # Create new window
-            xml_window = tk.Toplevel()
-            xml_window.title(f"XML View - {os.path.basename(full_path)}")
+            # Add text area
+            text_area = tk.Text(viewer, wrap=tk.NONE)
+            text_area.pack(fill=tk.BOTH, expand=True)
             
-            # Add text widget with scrollbar
-            text_frame = ttk.Frame(xml_window)
-            text_frame.pack(fill="both", expand=True, padx=5, pady=5)
+            # Add scrollbars
+            y_scrollbar = ttk.Scrollbar(viewer, orient=tk.VERTICAL, command=text_area.yview)
+            y_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            x_scrollbar = ttk.Scrollbar(viewer, orient=tk.HORIZONTAL, command=text_area.xview)
+            x_scrollbar.pack(side=tk.BOTTOM, fill=tk.X)
             
-            text_widget = tk.Text(text_frame, wrap="none")
-            yscroll = ttk.Scrollbar(text_frame, orient="vertical", command=text_widget.yview)
-            xscroll = ttk.Scrollbar(text_frame, orient="horizontal", command=text_widget.xview)
+            text_area.configure(yscrollcommand=y_scrollbar.set, xscrollcommand=x_scrollbar.set)
             
-            text_widget.configure(yscrollcommand=yscroll.set, xscrollcommand=xscroll.set)
-            
-            # Pack scrollbars and text widget
-            yscroll.pack(side="right", fill="y")
-            xscroll.pack(side="bottom", fill="x")
-            text_widget.pack(side="left", fill="both", expand=True)
-            
-            # Insert content and make read-only
-            text_widget.insert("1.0", content)
-            text_widget.configure(state="disabled")
-            
-            # Set window size and position
-            xml_window.geometry("800x600")
+            # Load and display content
+            with open(full_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            text_area.insert('1.0', content)
+            text_area.configure(state='disabled')  # Make read-only
             
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to load XML file: {e}")
-            log(f"Error loading XML file: {e}")
-            import traceback
-            traceback.print_exc()
+            messagebox.showerror("Error", f"Failed to show XML content: {str(e)}")
+            return
 
     def build_class_view(self):
         log("\nBuilding class view...")
@@ -697,13 +635,8 @@ class EquipmentBindingEditor(tk.Frame):
                     except tk.TclError:
                         continue  # Skip if widget has been destroyed
 
-            # Get the correct file path from mod_files
-            file_path = get_equipment_file(self.get_mod_path())
-            if not file_path:
-                messagebox.showerror("Error", "Could not determine equipment file path")
-                return
-            
-            log(f"Saving to equipment file: {file_path}")
+            # Write the XML content
+            file_path = os.path.normpath(os.path.join(self.get_mod_path(), self.binding_sources["equipment"]["path"]))
             
             # Create formatted output
             output = ['<?xml version="1.0" encoding="utf-8"?>']
@@ -738,7 +671,7 @@ class EquipmentBindingEditor(tk.Frame):
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(output))
             
-            messagebox.showinfo("Success", f"Changes saved to {os.path.basename(file_path)}")
+            messagebox.showinfo("Success", "Changes saved successfully")
             
             # Reload to show the current bindings
             self.load_all_bindings()
