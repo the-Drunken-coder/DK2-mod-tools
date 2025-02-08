@@ -44,8 +44,11 @@ class EquipmentBindingEditor(tk.Frame):
         mod_path = self.config.get("mod_path", "")
         current_mod = self.config.get("last_used_mod", "")
         if not mod_path or not current_mod:
+            log(f"Invalid configuration - mod_path: {mod_path}, current_mod: {current_mod}")
             return None
-        return os.path.join(mod_path, current_mod)
+        full_path = os.path.normpath(os.path.join(mod_path, current_mod))
+        log(f"Using mod path: {full_path}")
+        return full_path
 
     def get_equipment_xml_path(self):
         """Get the equipment binds XML file path"""
@@ -293,9 +296,14 @@ class EquipmentBindingEditor(tk.Frame):
 
     def create_xml_viewer_button(self, parent, source):
         """Create a button to view the XML file for a source"""
+        mod_path = self.get_mod_path()
+        if not mod_path:
+            log("No mod path configured - skipping XML viewer button creation")
+            return None
+            
         if source in self.binding_sources:
             # Normalize path to fix slashes
-            file_path = os.path.normpath(os.path.join(self.get_mod_path(), self.binding_sources[source]["path"]))
+            file_path = os.path.normpath(os.path.join(mod_path, self.binding_sources[source]["path"]))
             btn = ttk.Button(parent, text=f"View {source} XML", 
                            command=lambda: self.show_xml_content(file_path))
             return btn

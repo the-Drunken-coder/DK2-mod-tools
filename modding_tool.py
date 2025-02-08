@@ -6,13 +6,354 @@ import zipfile
 from modules.units_editor_module import UnitsEditor
 import importlib.util
 import sys
+import json
+import logging
 from utils import load_file, save_file, load_mod_info, load_xml, validate_xml
 from modules import config_editor_module
 from modules.mod_files import mod_files
+import datetime
+import ctypes
+import tempfile
+
+# Global variables
+PROGRAM_DIR = None
+DATA_DIR = None
+CONFIG_FILE = None
+log_file = None
+logger = None
+
+def setup_logging():
+    """Set up logging with proper paths"""
+    global log_file, logger
+    
+    # Set up logging
+    if os.path.exists(log_file):
+        try:
+            os.remove(log_file)
+        except:
+            pass
+
+    logging.basicConfig(
+        filename=log_file,
+        filemode='w',  # Write mode - overwrites the file
+        level=logging.DEBUG,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+
+    # Also log to console
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.DEBUG)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    console_handler.setFormatter(formatter)
+    logging.getLogger().addHandler(console_handler)
+
+    logger = logging.getLogger(__name__)
+    logger.info("Starting Door Kickers 2 Modding Tool")
+    logger.info(f"Program directory: {PROGRAM_DIR}")
+    logger.info(f"Data directory: {DATA_DIR}")
+    logger.info(f"Log file location: {log_file}")
+
+def initialize_program():
+    """Initialize program directories and logging"""
+    global PROGRAM_DIR, DATA_DIR, CONFIG_FILE, log_file, logger
+    
+    print("\nInitializing program...")
+    
+    try:
+        # Get program directories first
+        PROGRAM_DIR, DATA_DIR = get_program_dirs()
+        
+        # Ensure data directory exists
+        os.makedirs(DATA_DIR, exist_ok=True)
+        print(f"Ensured data directory exists: {DATA_DIR}")
+        
+        # Set up file paths
+        CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
+        log_file = os.path.join(DATA_DIR, "modding_tool.log")
+        
+        # Create initial files if they don't exist
+        if not os.path.exists(CONFIG_FILE) or not os.path.exists(log_file):
+            print("Creating initial files...")
+            create_initial_files(DATA_DIR)
+        
+        # Now that files exist, set up logging
+        setup_logging()
+        
+        # Initialize configuration
+        config = initialize_config()
+        
+        print("Program initialization complete!")
+        return config
+        
+    except Exception as e:
+        print(f"Failed to initialize program: {str(e)}")
+        if not os.path.exists(DATA_DIR):
+            print(f"Data directory does not exist: {DATA_DIR}")
+        if not os.path.exists(CONFIG_FILE):
+            print(f"Config file does not exist: {CONFIG_FILE}")
+        if not os.path.exists(log_file):
+            print(f"Log file does not exist: {log_file}")
+        raise
+
+def is_admin():
+    """Check if the program has admin privileges"""
+    try:
+        return ctypes.windll.shell32.IsUserAnAdmin()
+    except:
+        return False
+
+def request_admin():
+    """Request admin privileges by relaunching the program"""
+    try:
+        if not is_admin():
+            print("Requesting admin privileges...")
+            # Re-run the program with admin rights
+            ctypes.windll.shell32.ShellExecuteW(
+                None, "runas", sys.executable, " ".join(sys.argv), None, 1
+            )
+            sys.exit()
+        return True
+    except Exception as e:
+        print(f"Failed to get admin privileges: {str(e)}")
+        return False
+
+def ensure_directory_writable(directory):
+    """Ensure a directory exists and is writable"""
+    try:
+        # First try to create/verify the directory
+        os.makedirs(directory, exist_ok=True)
+        
+        # Try to create a test file
+        test_file = os.path.join(directory, 'test_write.tmp')
+        try:
+            with open(test_file, 'w') as f:
+                f.write('test')
+            os.remove(test_file)
+            print(f"Successfully verified write access to: {directory}")
+            return True
+        except (OSError, PermissionError) as e:
+            print(f"Cannot write to directory {directory}: {str(e)}")
+            return False
+    except Exception as e:
+        print(f"Failed to verify directory permissions: {str(e)}")
+        return False
+
+def get_writable_directory(primary_path, fallback_path=None):
+    """Get a writable directory, trying primary path first then fallback"""
+    # First try user's Documents folder as it's usually accessible
+    documents_dir = os.path.join(os.path.expanduser("~"), "Documents", "DK2ModdingTool")
+    if ensure_directory_writable(documents_dir):
+        return documents_dir
+        
+    # Then try AppData Local
+    appdata_dir = os.path.join(os.getenv('LOCALAPPDATA'), 'DK2ModdingTool')
+    if ensure_directory_writable(appdata_dir):
+        return appdata_dir
+        
+    # Finally try temp directory as last resort
+    temp_dir = os.path.join(tempfile.gettempdir(), 'DK2ModdingTool')
+    if ensure_directory_writable(temp_dir):
+        return temp_dir
+        
+    raise PermissionError(f"Cannot find writable directory. Tried: Documents, AppData, and Temp directories")
+
+def create_initial_files(data_dir):
+    """Create initial files in the data directory during installation"""
+    print(f"\nCreating initial files in: {data_dir}")
+    
+    # First ensure the directory exists and is writable
+    if not ensure_directory_writable(data_dir):
+        print(f"Cannot write to directory: {data_dir}")
+        # Try Documents folder
+        data_dir = os.path.join(os.path.expanduser("~"), "Documents", "DK2ModdingTool")
+        if not ensure_directory_writable(data_dir):
+            raise PermissionError(f"Cannot find writable directory")
+    
+    # Create initial config file
+    config_file = os.path.join(data_dir, "config.json")
+    print(f"Creating config file at: {config_file}")
+    initial_config = {
+        "mod_path": "",
+        "game_path": "",
+        "last_used_mod": "",
+        "created_at": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }
+    
+    try:
+        # Write config file
+        with open(config_file, 'w') as f:
+            json.dump(initial_config, f, indent=4)
+        print("Successfully created config file")
+        
+        # Create log file
+        log_file = os.path.join(data_dir, "modding_tool.log")
+        print(f"Creating log file at: {log_file}")
+        with open(log_file, 'w') as f:
+            f.write("# Door Kickers 2 Modding Tool Log\n")
+            f.write(f"# Created: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write("# This file will be overwritten each time the program starts\n\n")
+        print("Successfully created log file")
+        
+        # Verify files were created and are writable
+        if not os.path.exists(config_file) or not os.path.exists(log_file):
+            raise FileNotFoundError("Files were not created successfully")
+            
+        # Test write access
+        with open(config_file, 'a') as f:
+            pass
+        with open(log_file, 'a') as f:
+            pass
+            
+        print("Successfully verified file access!")
+        return True
+        
+    except Exception as e:
+        print(f"Failed to create files: {str(e)}")
+        raise
+
+def get_program_dirs():
+    """Get or create program directories"""
+    print("\nSetting up program directories...")
+    
+    # Initialize Tkinter root for dialogs
+    root = tk.Tk()
+    root.withdraw()  # Hide the root window
+    
+    # First, check if we're already in Program Files
+    exe_dir = os.path.dirname(os.path.abspath(sys.argv[0]))
+    program_dir = exe_dir
+    print(f"Using program directory: {program_dir}")
+    
+    # Use the same directory for data files
+    data_dir = program_dir
+    print(f"Using same directory for data files: {data_dir}")
+    
+    # Create/verify files
+    try:
+        # Create/verify files
+        if not os.path.exists(data_dir):
+            print("Data directory doesn't exist, creating it...")
+            create_initial_files(data_dir)
+        else:
+            print("Data directory exists, verifying files...")
+            config_file = os.path.join(data_dir, "config.json")
+            log_file = os.path.join(data_dir, "modding_tool.log")
+            
+            if not os.path.exists(config_file) or not os.path.exists(log_file):
+                print("Some files are missing, recreating them...")
+                create_initial_files(data_dir)
+            else:
+                # Verify files are writable
+                if not ensure_directory_writable(data_dir):
+                    print("Files exist but are not writable, recreating them...")
+                    create_initial_files(data_dir)
+                else:
+                    print("All required files exist and are writable")
+                    
+    except Exception as e:
+        print(f"Failed to set up data directory: {str(e)}")
+        messagebox.showerror(
+            "Error",
+            "Cannot create or access data files. Please ensure you have write permissions."
+        )
+        root.destroy()
+        sys.exit(1)
+    
+    root.destroy()  # Clean up the temporary root window
+    print(f"\nSetup complete!\nUsing directory: {program_dir}")
+    return program_dir, data_dir
+
+DEFAULT_DK2_PATH = r"C:\Program Files (x86)\Steam\steamapps\common\DoorKickers2"
+
+def initialize_config():
+    """Initialize configuration file if it doesn't exist"""
+    try:
+        print(f"Initializing config from: {CONFIG_FILE}")  # Temporary print for debugging
+        
+        if os.path.exists(CONFIG_FILE):
+            logger.info("Loading existing config file...")
+            try:
+                with open(CONFIG_FILE, 'r') as f:
+                    config = json.load(f)
+                    # Normalize paths in the loaded config
+                    if config.get("mod_path"):
+                        config["mod_path"] = os.path.normpath(config["mod_path"])
+                        logger.info(f"Normalized mod_path: {config['mod_path']}")
+                    if config.get("game_path"):
+                        config["game_path"] = os.path.normpath(config["game_path"])
+                        logger.info(f"Normalized game_path: {config['game_path']}")
+                    return config
+            except Exception as e:
+                print(f"Failed to read config file: {str(e)}")
+                raise
+                
+        logger.info("No config file found, creating new one...")
+        config = {
+            "mod_path": "",
+            "game_path": "",
+            "last_used_mod": ""
+        }
+        
+        # Try to auto-detect DK2 installation
+        if os.path.exists(DEFAULT_DK2_PATH):
+            logger.info("Found DK2 installation at default path")
+            config["game_path"] = os.path.normpath(DEFAULT_DK2_PATH)
+            mods_path = os.path.join(DEFAULT_DK2_PATH, "mods")
+            if os.path.exists(mods_path):
+                logger.info("Found mods directory")
+                config["mod_path"] = os.path.normpath(mods_path)
+        
+        # Try other common Steam locations if default not found
+        if not config["game_path"]:
+            steam_paths = [
+                r"C:\Program Files\Steam",
+                r"D:\Steam",
+                r"E:\Steam",
+                os.path.expanduser("~/Steam"),
+                os.path.expanduser("~/Games/Steam")
+            ]
+            
+            for steam_path in steam_paths:
+                dk2_path = os.path.join(steam_path, "steamapps", "common", "DoorKickers2")
+                if os.path.exists(dk2_path):
+                    logger.info(f"Found DK2 installation at: {dk2_path}")
+                    config["game_path"] = os.path.normpath(dk2_path)
+                    mods_path = os.path.join(dk2_path, "mods")
+                    if os.path.exists(mods_path):
+                        logger.info("Found mods directory")
+                        config["mod_path"] = os.path.normpath(mods_path)
+                    break
+        
+        # Save the config
+        print(f"Attempting to save config to: {CONFIG_FILE}")  # Debug print
+        try:
+            # First verify parent directory exists and is writable
+            os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+            
+            # Try to write config
+            with open(CONFIG_FILE, 'w') as f:
+                json.dump(config, f, indent=4)
+            print("Successfully saved config file")
+            logger.info("Created new config file")
+        except Exception as e:
+            print(f"Failed to save config file: {str(e)}")
+            raise
+            
+        return config
+    except Exception as e:
+        print(f"Error in initialize_config: {str(e)}")
+        logger.error(f"Error initializing config: {e}", exc_info=True)
+        # Return a default config as fallback
+        return {
+            "mod_path": "",
+            "game_path": "",
+            "last_used_mod": ""
+        }
 
 def get_unit_file(mod_path):
     """Get the unit XML file for a mod."""
     global mod_files
+    mod_path = os.path.normpath(mod_path)
     if mod_files.mod_path != mod_path:
         mod_files.mod_path = mod_path
         mod_files.scan_mod_directory()
@@ -21,6 +362,7 @@ def get_unit_file(mod_path):
 def get_equipment_file(mod_path):
     """Get the equipment binds XML file for a mod."""
     global mod_files
+    mod_path = os.path.normpath(mod_path)
     # Only scan if the path has changed
     if mod_files.mod_path != mod_path:
         mod_files.mod_path = mod_path
@@ -30,6 +372,7 @@ def get_equipment_file(mod_path):
 def get_entities_file(mod_path):
     """Get the entities XML file for a mod."""
     global mod_files
+    mod_path = os.path.normpath(mod_path)
     # Only scan if the path has changed
     if mod_files.mod_path != mod_path:
         mod_files.mod_path = mod_path
@@ -39,6 +382,7 @@ def get_entities_file(mod_path):
 def get_gui_file(mod_path):
     """Get the GUI XML file for a mod."""
     global mod_files
+    mod_path = os.path.normpath(mod_path)
     # Only scan if the path has changed
     if mod_files.mod_path != mod_path:
         mod_files.mod_path = mod_path
@@ -257,39 +601,56 @@ def reload_plugins(notebook):
 
 
 def main():
-    root = tk.Tk()
-    
-    # Load initial configuration
-    config = config_editor_module.load_config()
-    root.title(f"Door Kickers 2 Mod Tools - {config.get('last_used_mod', '')}")
-
-    # Create Notebook
-    notebook = ttk.Notebook(root)
-    notebook.pack(fill="both", expand=True)
-
-    # Load dynamic plugins from modules folder
-    loaded_modules = load_plugins(notebook)
-
-    # Handle configuration changes
-    def on_config_change(event):
-        config = config_editor_module.load_config()
+    try:
+        # Initialize everything first
+        config = initialize_program()
+        
+        # Only import modules after initialization is complete
+        import importlib.util
+        import sys
+        from utils import load_file, save_file, load_mod_info, load_xml, validate_xml
+        from modules import config_editor_module
+        from modules.mod_files import mod_files
+        
+        root = tk.Tk()
+        
+        # Load initial configuration
         root.title(f"Door Kickers 2 Mod Tools - {config.get('last_used_mod', '')}")
-        # Reload plugins to reflect new configuration
-        load_plugins(notebook, force_reload=True)
-
-    root.bind_all("<<ConfigurationChanged>>", on_config_change)
-
-    # Center the main window
-    root.update_idletasks()
-    window_width = root.winfo_width()
-    window_height = root.winfo_height()
-    screen_width = root.winfo_screenwidth()
-    screen_height = root.winfo_screenheight()
-    x_coordinate = int((screen_width / 2) - (window_width / 2))
-    y_coordinate = int((screen_height / 2) - (window_height / 2))
-    root.geometry(f"+{x_coordinate}+{y_coordinate}")
-
-    root.mainloop()
+        
+        # Create Notebook
+        notebook = ttk.Notebook(root)
+        notebook.pack(fill="both", expand=True)
+        
+        # Load dynamic plugins from modules folder
+        loaded_modules = load_plugins(notebook)
+        
+        # Handle configuration changes
+        def on_config_change(event):
+            config = config_editor_module.load_config()
+            root.title(f"Door Kickers 2 Mod Tools - {config.get('last_used_mod', '')}")
+            # Reload plugins to reflect new configuration
+            load_plugins(notebook, force_reload=True)
+        
+        root.bind_all("<<ConfigurationChanged>>", on_config_change)
+        
+        # Center the main window
+        root.update_idletasks()
+        window_width = root.winfo_width()
+        window_height = root.winfo_height()
+        screen_width = root.winfo_screenwidth()
+        screen_height = root.winfo_screenheight()
+        x_coordinate = int((screen_width / 2) - (window_width / 2))
+        y_coordinate = int((screen_height / 2) - (window_height / 2))
+        root.geometry(f"+{x_coordinate}+{y_coordinate}")
+        
+        root.mainloop()
+        
+    except Exception as e:
+        print(f"\nFatal error during startup: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        input("\nPress Enter to exit...")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

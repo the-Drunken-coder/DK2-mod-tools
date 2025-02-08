@@ -118,7 +118,22 @@ def build_executable():
         '--windowed '
         '--onefile '
         '--icon=resources/icon.ico '
-        '--add-data="modules;modules" '  # Only include our modules
+        '--add-data="modules;modules" '  # Include entire modules directory
+        '--add-data="utils.py;." '  # Include utils.py
+        '--add-data="LICENSE;." '  # Include license
+        '--add-data="README.md;." '  # Include readme
+        '--add-data="modding_tool_config.json;." '  # Include default config
+        '--hidden-import=modules.config_editor_module '
+        '--hidden-import=modules.entities_editor_module '
+        '--hidden-import=modules.equipment_binding_editor_module '
+        '--hidden-import=modules.gui_editor_module '
+        '--hidden-import=modules.localization_editor_module '
+        '--hidden-import=modules.mod_files '
+        '--hidden-import=modules.mod_metadata_editor_module '
+        '--hidden-import=modules.units_editor_module '
+        '--collect-submodules=modules '  # Collect all submodules
+        '--collect-data=modules '  # Collect all module data
+        '--collect-all=modules '  # Ensure ALL module content is included
         '--clean '  # Clean PyInstaller cache
         '--noupx '  # Don't use UPX compression (can cause issues)
         '--exclude-module=matplotlib '  # Exclude unnecessary large packages
@@ -153,7 +168,7 @@ def create_installer():
     
     # Inno Setup script
     log("Generating Inno Setup script...")
-    iss_script = f'''
+    iss_script = r'''
 #define MyAppName "Door Kickers 2 Modding Tool"
 #define MyAppVersion "0.1.0"
 #define MyAppPublisher "DK2 Modding Community"
@@ -161,14 +176,15 @@ def create_installer():
 #define MyAppExeName "DK2ModdingTool.exe"
 
 [Setup]
-AppId={{{{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}}}}
-AppName={{#MyAppName}}
-AppVersion={{#MyAppVersion}}
-AppPublisher={{#MyAppPublisher}}
-AppPublisherURL={{#MyAppURL}}
-AppSupportURL={{#MyAppURL}}
-AppUpdatesURL={{#MyAppURL}}
-DefaultDirName={{autopf}}\\{{#MyAppName}}
+AppId={{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}}
+AppName={#MyAppName}
+AppVersion={#MyAppVersion}
+AppPublisher={#MyAppPublisher}
+AppPublisherURL={#MyAppURL}
+AppSupportURL={#MyAppURL}
+AppUpdatesURL={#MyAppURL}
+DefaultDirName={userdocs}\{#MyAppName}
+DisableDirPage=no
 DisableProgramGroupPage=yes
 LicenseFile=LICENSE
 OutputDir=installer
@@ -177,25 +193,68 @@ SetupIconFile=resources/icon.ico
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
+UninstallDisplayIcon={app}\{#MyAppExeName}
+CreateUninstallRegKey=yes
+UninstallDisplayName={#MyAppName}
+PrivilegesRequired=lowest
+DirExistsWarning=no
+UsePreviousAppDir=no
+PrivilegesRequiredOverridesAllowed=dialog
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "{{cm:CreateDesktopIcon}}"; GroupDescription: "{{cm:AdditionalIcons}}"
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
-Source: "dist\\DK2ModdingTool.exe"; DestDir: "{{app}}"; Flags: ignoreversion
-Source: "README.md"; DestDir: "{{app}}"; Flags: ignoreversion
-Source: "LICENSE"; DestDir: "{{app}}"; Flags: ignoreversion
+Source: "dist\DK2ModdingTool.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "utils.py"; DestDir: "{app}"; Flags: ignoreversion
+Source: "modding_tool_config.json"; DestDir: "{app}"; Flags: ignoreversion
+Source: "modules\*"; DestDir: "{app}\modules"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "modules\config_editor_module.py"; DestDir: "{app}\modules"; Flags: ignoreversion
+Source: "modules\entities_editor_module.py"; DestDir: "{app}\modules"; Flags: ignoreversion
+Source: "modules\equipment_binding_editor_module.py"; DestDir: "{app}\modules"; Flags: ignoreversion
+Source: "modules\gui_editor_module.py"; DestDir: "{app}\modules"; Flags: ignoreversion
+Source: "modules\localization_editor_module.py"; DestDir: "{app}\modules"; Flags: ignoreversion
+Source: "modules\mod_files.py"; DestDir: "{app}\modules"; Flags: ignoreversion
+Source: "modules\mod_metadata_editor_module.py"; DestDir: "{app}\modules"; Flags: ignoreversion
+Source: "modules\units_editor_module.py"; DestDir: "{app}\modules"; Flags: ignoreversion
+
+[Dirs]
+Name: "{app}"; Permissions: users-full
+Name: "{app}\modules"; Permissions: users-full
 
 [Icons]
-Name: "{{autoprograms}}\\{{#MyAppName}}"; Filename: "{{app}}\\{{#MyAppExeName}}"
-Name: "{{autodesktop}}\\{{#MyAppName}}"; Filename: "{{app}}\\{{#MyAppExeName}}"; Tasks: desktopicon
+Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
-Filename: "{{app}}\\{{#MyAppExeName}}"; Description: "{{cm:LaunchProgram,{{#StringChange(MyAppName, '&', '&&')}}}}"; Flags: nowait postinstall skipifsilent
-    '''
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+
+[UninstallDelete]
+Type: filesandordirs; Name: "{app}"
+Type: dirifempty; Name: "{app}"
+
+[Code]
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  ResultCode: Integer;
+begin
+  if CurStep = ssPostInstall then
+  begin
+    // Set full permissions for the installation directory and all contents
+    Exec('icacls.exe', 
+         ExpandConstant('"{app}" /grant Users:(OI)(CI)F /T'), 
+         '', 
+         SW_HIDE, 
+         ewWaitUntilTerminated, 
+         ResultCode);
+  end;
+end;
+'''
     
     # Create installer directory if it doesn't exist
     installer_dir = Path('installer')
@@ -208,13 +267,25 @@ Filename: "{{app}}\\{{#MyAppExeName}}"; Description: "{{cm:LaunchProgram,{{#Stri
     
     # Verify required files
     log("Verifying required files...")
-    required_files = ['dist/DK2ModdingTool.exe', 'README.md', 'LICENSE', 'resources/icon.ico']
+    required_files = [
+        'dist/DK2ModdingTool.exe',
+        'README.md',
+        'LICENSE',
+        'resources/icon.ico'
+    ]
     for file in required_files:
         if not os.path.exists(file):
             log(f"Required file missing: {file}", "ERROR")
             sys.exit(1)
         else:
             log(f"Found required file: {file}")
+    
+    # Verify modules directory exists
+    if not os.path.exists('modules'):
+        log("Modules directory missing!", "ERROR")
+        sys.exit(1)
+    else:
+        log("Found modules directory")
     
     # Run Inno Setup Compiler
     log("Running Inno Setup Compiler...")
@@ -229,6 +300,30 @@ Filename: "{{app}}\\{{#MyAppExeName}}"; Description: "{{cm:LaunchProgram,{{#Stri
     else:
         log("Failed to find created installer!", "ERROR")
         sys.exit(1)
+
+def zip_release_files(release_dir):
+    """Create a zip archive of the release files"""
+    log("Creating release archive...")
+    try:
+        # Create zip file with version number
+        version = "0.1.0"  # This should match MyAppVersion in create_installer
+        zip_name = f'DK2ModdingTool_v{version}_release.zip'
+        zip_path = Path(zip_name)  # Create in main directory
+        
+        # Create zip file
+        import zipfile
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            # Add each file in the release directory
+            for file in release_dir.glob('*'):
+                log(f"Adding {file.name} to release archive...")
+                zipf.write(file, file.name)
+        
+        size_mb = os.path.getsize(zip_path) / (1024 * 1024)
+        log(f"Release archive created successfully: {zip_path} (Size: {size_mb:.2f}MB)")
+        return True
+    except Exception as e:
+        log(f"Failed to create release archive: {str(e)}", "ERROR")
+        return False
 
 def create_github_release():
     """Create a GitHub release with the installer"""
@@ -280,14 +375,17 @@ If you encounter any issues, please report them on the GitHub issues page.
             f.write(release_notes)
             
         log("Release files prepared successfully!")
+        
+        # Create zip archive of release files
+        if not zip_release_files(release_dir):
+            return False
+            
         log("\nTo create the GitHub release:")
         log("1. Go to your GitHub repository")
         log("2. Click 'Releases' then 'Create new release'")
         log("3. Create a new tag (e.g. v0.1.0)")
         log("4. Upload the files from the 'release' directory:")
-        log("   - DK2ModdingTool_Setup.exe")
-        log("   - README.md")
-        log("   - LICENSE")
+        log("   - DK2ModdingTool_v0.1.0_release.zip (contains all release files)")
         log("5. Copy the contents of RELEASE_NOTES.md into the release description")
         log("6. Click 'Publish release'")
         
