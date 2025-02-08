@@ -11,6 +11,16 @@ This tool is currently in early development. Many features are incomplete, broke
 
 **ALWAYS BACKUP YOUR MOD FILES BEFORE USING THIS TOOL!**
 
+## ⚠️ Important First Startup Note ⚠️
+**You will see errors on first startup - THIS IS NORMAL!** 
+These errors occur because the file paths are not yet configured. To fix this:
+1. Launch the tool
+2. Go to the Configuration tab
+3. Save your configuration (even if paths are automatically detected)
+4. Restart the tool
+
+The errors will disappear after saving your configuration. This is a one-time setup process.
+
 ## Important Notes
 
 ### GUI Editor Limitations
