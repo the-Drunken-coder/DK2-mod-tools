@@ -77,19 +77,21 @@ class EntitiesEditor(tk.Frame):
                 
             if not os.path.exists(xml_path):
                 # Create basic structure
-                root = ET.Element("Entities")
+                self.unit_elem = ET.Element("Entities")
                 # Add a comment explaining the file
-                root.append(ET.Comment("Human entity definitions for the mod"))
-                tree = ET.ElementTree(root)
-                tree.write(xml_path, encoding='utf-8', xml_declaration=True)
+                self.unit_elem.append(ET.Comment("Human entity definitions for the mod"))
+                self.tree = ET.ElementTree(self.unit_elem)
+                self.tree.write(xml_path, encoding='utf-8', xml_declaration=True)
                 messagebox.showinfo("Info", "Created new humans.xml file with default structure")
-                
-            self.tree = ET.parse(xml_path)
-            root = self.tree.getroot()
-            self.entities = root.findall('Entity')
+            else:
+                self.tree = ET.parse(xml_path)
+                self.unit_elem = self.tree.getroot()
+            
+            self.entities = self.unit_elem.findall('Entity')
             if not self.entities:
-                messagebox.showerror("Error", "No <Entity> elements found in XML.")
+                messagebox.showinfo("Info", "No entities found. Create a new entity to get started.")
                 return
+            
             entity_names = [e.get("name", "Unnamed") for e in self.entities]
             self.entity_select_combobox['values'] = entity_names
             self.entity_select_combobox.current(0)
@@ -97,14 +99,27 @@ class EntitiesEditor(tk.Frame):
             self.load_entity(self.current_entity)
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load XML: {e}")
+            print(f"XML load error details: {str(e)}")  # For debugging
 
     def build_ui(self):
         top_frame = ttk.Frame(self)
         top_frame.pack(fill="x", padx=5, pady=5)
-        ttk.Label(top_frame, text="Select Entity:").pack(side="left")
+        
+        # Add New Entity button
+        ttk.Button(top_frame, text="Create New Entity", command=self.create_new_entity).pack(side="left", padx=5)
+        
+        ttk.Label(top_frame, text="Select Entity:").pack(side="left", padx=(10,5))
         self.entity_select_combobox = ttk.Combobox(top_frame, state="readonly")
         self.entity_select_combobox.pack(side="left", padx=5)
         self.entity_select_combobox.bind("<<ComboboxSelected>>", self.on_entity_selected)
+        
+        # Add Delete Entity button
+        ttk.Button(top_frame, text="Delete Entity", command=self.delete_current_entity,
+                  style="Delete.TButton").pack(side="left", padx=5)
+        
+        # Create a style for the delete button (red text)
+        delete_style = ttk.Style()
+        delete_style.configure("Delete.TButton", foreground="red")
 
         entity_frame = ttk.LabelFrame(self, text="Entity Attributes")
         entity_frame.pack(fill="x", padx=5, pady=5)
@@ -339,6 +354,315 @@ class EntitiesEditor(tk.Frame):
             messagebox.showinfo("Success", "XML file updated successfully.")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to write XML: {e}")
+
+    def create_new_entity(self):
+        """Create a new entity dialog"""
+        dialog = tk.Toplevel(self)
+        dialog.title("Create New Entity")
+        dialog.geometry("800x600")  # Made wider and taller for more fields
+        
+        # Create main frame with scrollbar
+        main_frame = ttk.Frame(dialog)
+        main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        canvas = tk.Canvas(main_frame)
+        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+        
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
+        
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        
+        # Pack scrollbar elements
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        row = 0
+        # Basic Entity Attributes
+        ttk.Label(scrollable_frame, text="Basic Entity Attributes:", font=("TkDefaultFont", 10, "bold")).grid(
+            row=row, column=0, columnspan=2, sticky="w", padx=5, pady=(5,2))
+        row += 1
+        
+        fields = {
+            "name": "Entity Name (e.g. assaulter_01)",
+            "type": "Entity Type (e.g. Human)",
+            "editorAutoHeight": "Editor Auto Height (e.g. false)"
+        }
+        
+        entries = {}
+        for field, label in fields.items():
+            ttk.Label(scrollable_frame, text=label).grid(row=row, column=0, sticky="w", padx=5, pady=2)
+            entry = ttk.Entry(scrollable_frame, width=50)
+            entry.grid(row=row, column=1, sticky="w", padx=5, pady=2)
+            entries[field] = entry
+            row += 1
+            
+            # Add default values
+            if field == "type":
+                entry.insert(0, "Human")
+            elif field == "editorAutoHeight":
+                entry.insert(0, "false")
+        
+        # Visual Elements Section
+        ttk.Label(scrollable_frame, text="Visual Elements:", font=("TkDefaultFont", 10, "bold")).grid(
+            row=row, column=0, columnspan=2, sticky="w", padx=5, pady=(10,2))
+        row += 1
+        
+        # RenderObject3D entries
+        render_objects = []
+        def add_render_object():
+            nonlocal row
+            render_frame = ttk.LabelFrame(scrollable_frame, text=f"RenderObject3D {len(render_objects)+1}")
+            render_frame.grid(row=row, column=0, columnspan=2, sticky="ew", padx=5, pady=2)
+            
+            render_entries = {}
+            render_entries["model"] = ttk.Entry(render_frame, width=70)
+            render_entries["model"].insert(0, "data/models/humans/ranger_assaulter.khm")
+            ttk.Label(render_frame, text="Model:").pack(anchor="w", padx=5)
+            render_entries["model"].pack(fill="x", padx=5, pady=2)
+            
+            render_entries["diffuseTex"] = ttk.Entry(render_frame, width=70)
+            render_entries["diffuseTex"].insert(0, "data/models/humans/ranger_assaulter.dds")
+            ttk.Label(render_frame, text="Texture:").pack(anchor="w", padx=5)
+            render_entries["diffuseTex"].pack(fill="x", padx=5, pady=2)
+            
+            # Optional attributes
+            render_entries["windAnimated"] = tk.BooleanVar(value=False)
+            ttk.Checkbutton(render_frame, text="Wind Animated", variable=render_entries["windAnimated"]).pack(anchor="w", padx=5)
+            
+            # Specular settings frame
+            specular_frame = ttk.Frame(render_frame)
+            specular_frame.pack(fill="x", padx=5, pady=2)
+            render_entries["specular"] = {
+                "shininess": ttk.Entry(specular_frame, width=10),
+                "intensity": ttk.Entry(specular_frame, width=10)
+            }
+            ttk.Label(specular_frame, text="Specular Shininess:").pack(side="left", padx=2)
+            render_entries["specular"]["shininess"].pack(side="left", padx=2)
+            ttk.Label(specular_frame, text="Intensity:").pack(side="left", padx=2)
+            render_entries["specular"]["intensity"].pack(side="left", padx=2)
+            
+            render_objects.append(render_entries)
+            row += 1
+        
+        ttk.Button(scrollable_frame, text="Add RenderObject3D", command=add_render_object).grid(
+            row=row, column=0, columnspan=2, pady=5)
+        row += 1
+        
+        # Breakable section
+        ttk.Label(scrollable_frame, text="Breakable Settings:", font=("TkDefaultFont", 10, "bold")).grid(
+            row=row, column=0, columnspan=2, sticky="w", padx=5, pady=(10,2))
+        row += 1
+        
+        breakable_frame = ttk.Frame(scrollable_frame)
+        breakable_frame.grid(row=row, column=0, columnspan=2, sticky="ew", padx=5, pady=2)
+        breakable_entries = {
+            "template": ttk.Entry(breakable_frame, width=30),
+            "breakOnDamage": ttk.Entry(breakable_frame, width=20),
+            "deleteOnDeath": tk.BooleanVar(value=False)
+        }
+        
+        ttk.Label(breakable_frame, text="Template:").pack(side="left", padx=2)
+        breakable_entries["template"].pack(side="left", padx=2)
+        breakable_entries["template"].insert(0, "GenericTrooperGibs")
+        
+        ttk.Label(breakable_frame, text="Break On:").pack(side="left", padx=2)
+        breakable_entries["breakOnDamage"].pack(side="left", padx=2)
+        breakable_entries["breakOnDamage"].insert(0, "explosive")
+        
+        ttk.Checkbutton(breakable_frame, text="Delete On Death", 
+                        variable=breakable_entries["deleteOnDeath"]).pack(side="left", padx=2)
+        row += 1
+        
+        # Human Attributes Section
+        ttk.Label(scrollable_frame, text="Human Attributes:", font=("TkDefaultFont", 10, "bold")).grid(
+            row=row, column=0, columnspan=2, sticky="w", padx=5, pady=(10,2))
+        row += 1
+        
+        human_fields = {
+            "type": "Human Type (e.g. GoodGuy)",
+            "unit": "Unit Name (e.g. FACTION)",
+            "class": "Class Name (e.g. AssaultClass)"
+        }
+        
+        human_entries = {}
+        for field, label in human_fields.items():
+            ttk.Label(scrollable_frame, text=label).grid(row=row, column=0, sticky="w", padx=5, pady=2)
+            entry = ttk.Entry(scrollable_frame, width=50)
+            entry.grid(row=row, column=1, sticky="w", padx=5, pady=2)
+            human_entries[field] = entry
+            row += 1
+            
+            # Add default values
+            if field == "type":
+                entry.insert(0, "GoodGuy")
+            elif field == "unit":
+                entry.insert(0, "FACTION")
+        
+        def add_entity():
+            # Get values from entries
+            values = {field: entry.get().strip() for field, entry in entries.items()}
+            human_values = {field: entry.get().strip() for field, entry in human_entries.items()}
+            
+            # Validate required fields
+            if not values["name"] or not values["type"]:
+                messagebox.showerror("Error", "Entity Name and Type are required")
+                return
+            
+            # Create new Entity element
+            entity = ET.Element("Entity")
+            for field, value in values.items():
+                if value:  # Only set non-empty values
+                    entity.set(field, value)
+            
+            # Add RenderObject3D elements
+            for render_obj in render_objects:
+                render_elem = ET.SubElement(entity, "RenderObject3D")
+                render_elem.set("model", render_obj["model"].get())
+                render_elem.set("diffuseTex", render_obj["diffuseTex"].get())
+                
+                if render_obj["windAnimated"].get():
+                    render_elem.set("windAnimated", "1")
+                
+                # Add Specular if values are provided
+                if render_obj["specular"]["shininess"].get() or render_obj["specular"]["intensity"].get():
+                    specular = ET.SubElement(render_elem, "Specular")
+                    if render_obj["specular"]["shininess"].get():
+                        specular.set("shininess", render_obj["specular"]["shininess"].get())
+                    if render_obj["specular"]["intensity"].get():
+                        specular.set("intensity", render_obj["specular"]["intensity"].get())
+            
+            # Add Breakable element
+            breakable = ET.SubElement(entity, "Breakable")
+            breakable.set("template", breakable_entries["template"].get())
+            breakable.set("breakOnDamage", breakable_entries["breakOnDamage"].get())
+            breakable.set("deleteOnDeath", "true" if breakable_entries["deleteOnDeath"].get() else "false")
+            
+            # Add PhysicalParams
+            physical = ET.SubElement(entity, "PhysicalParams")
+            physical.set("health", "100")
+            
+            # Create Human subelement
+            human = ET.SubElement(entity, "Human")
+            for field, value in human_values.items():
+                if value:  # Only set non-empty values
+                    human.set(field, value)
+            
+            # Add default subelements
+            id_elem = ET.SubElement(human, "Id")
+            id_elem.set("name", values["name"] + "Template")
+            id_elem.set("portrait", "data/textures/portraits/ranger2.dds")
+            id_elem.set("gender", "0")
+            id_elem.set("voicePack", "nws_male")
+            
+            fov_elem = ET.SubElement(human, "FOV")
+            fov_elem.set("degrees", "90")
+            fov_elem.set("distanceMeters", "999")
+            fov_elem.set("eyeRadiusMeters", "0.6")
+            
+            brain_elem = ET.SubElement(human, "Brain")
+            brain_elem.set("suppressionRecovery", "30.0")
+            
+            mobility_elem = ET.SubElement(human, "Mobility")
+            
+            move_speed = ET.SubElement(mobility_elem, "MoveSpeed")
+            move_speed.set("min", "1.1")
+            move_speed.set("defaultMetersPerSec", "2.28")
+            move_speed.set("max", "10")
+            
+            turn_speed = ET.SubElement(mobility_elem, "TurnSpeed")
+            turn_speed.set("min", "6")
+            turn_speed.set("defaultMetersPerSec", "13")
+            turn_speed.set("max", "20")
+            
+            equipment_elem = ET.SubElement(human, "Equipment")
+            
+            # Add to XML tree
+            if not hasattr(self, 'unit_elem') or self.unit_elem is None:
+                self.unit_elem = ET.Element("Entities")
+                self.tree = ET.ElementTree(self.unit_elem)
+            
+            self.unit_elem.append(entity)
+            if not hasattr(self, 'entities'):
+                self.entities = []
+            self.entities.append(entity)
+            
+            # Update combobox
+            entity_names = [e.get("name", "Unnamed") for e in self.entities]
+            self.entity_select_combobox['values'] = entity_names
+            self.entity_select_combobox.set(values["name"])
+            
+            # Select the new entity
+            self.current_entity = entity
+            self.load_entity(entity)
+            
+            # Close dialog
+            dialog.destroy()
+            
+            # Show success message
+            messagebox.showinfo("Success", f"Created new entity: {values['name']}")
+        
+        # Add buttons at the bottom
+        button_frame = ttk.Frame(dialog)
+        button_frame.pack(side="bottom", fill="x", padx=10, pady=10)
+        
+        ttk.Button(button_frame, text="Create Entity", command=add_entity).pack(side="right", padx=5)
+        ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side="right", padx=5)
+        
+        # Add initial RenderObject3D
+        add_render_object()
+
+    def delete_current_entity(self):
+        """Delete the currently selected entity"""
+        if not self.current_entity:
+            messagebox.showerror("Error", "No entity selected")
+            return
+        
+        entity_name = self.current_entity.get("name", "Unnamed")
+        if not messagebox.askyesno("Confirm Delete", 
+                                  f"Are you sure you want to delete entity '{entity_name}'?\nThis cannot be undone."):
+            return
+        
+        try:
+            # Remove from XML tree
+            self.unit_elem.remove(self.current_entity)
+            # Remove from entities list
+            self.entities.remove(self.current_entity)
+            
+            # Update combobox
+            entity_names = [e.get("name", "Unnamed") for e in self.entities]
+            self.entity_select_combobox['values'] = entity_names
+            
+            # Select first entity if any remain
+            if self.entities:
+                self.entity_select_combobox.current(0)
+                self.current_entity = self.entities[0]
+                self.load_entity(self.current_entity)
+            else:
+                self.entity_select_combobox.set('')
+                self.current_entity = None
+                # Clear all entries
+                for entries in [self.entity_attr_entries, self.human_attr_entries, 
+                              self.id_attr_entries, self.fov_attr_entries, 
+                              self.brain_attr_entries, self.move_speed_entries,
+                              self.turn_speed_entries, self.physical_params_entries]:
+                    for entry in entries.values():
+                        entry.delete(0, tk.END)
+                if self.equipment_entry:
+                    self.equipment_entry.delete(0, tk.END)
+            
+            # Save changes to file
+            xml_path = self.get_xml_path()
+            if xml_path:
+                self.tree.write(xml_path, encoding='utf-8', xml_declaration=True)
+                messagebox.showinfo("Success", f"Entity '{entity_name}' deleted successfully")
+            
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to delete entity: {str(e)}")
 
 
 def get_plugin_tab(parent):

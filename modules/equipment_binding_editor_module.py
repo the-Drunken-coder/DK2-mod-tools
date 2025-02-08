@@ -7,7 +7,7 @@ from modules import config_editor_module
 from modding_tool import get_equipment_file, get_unit_file, mod_files
 
 PLUGIN_TITLE = "Equipment & Bindings"
-ENABLE_LOGGING = False  # Toggle module logging
+ENABLE_LOGGING = True  # Toggle module logging
 
 def log(message):
     """Module specific logging function"""
@@ -21,6 +21,7 @@ class EquipmentBindingEditor(tk.Frame):
         self.bindings = []
         self.binding_widgets = []
         self.config = config_editor_module.load_config()
+        self.clipboard = None  # Store copied binding
         
         # Get mod path and initialize ModFiles
         mod_path = self.get_mod_path()
@@ -407,10 +408,20 @@ class EquipmentBindingEditor(tk.Frame):
             for binding, source in faction_bindings:
                 self.create_binding_widget(faction_bindings_frame, binding, source)
         
-        # Add faction binding button
-        add_btn = ttk.Button(faction_frame, text="Add Faction-wide Binding", 
+        # Add faction binding buttons frame
+        faction_buttons_frame = ttk.Frame(faction_frame)
+        faction_buttons_frame.pack(pady=5)
+        
+        # Add New button
+        add_btn = ttk.Button(faction_buttons_frame, text="Add Faction-wide Binding", 
                            command=lambda c=self.faction_name, gf=faction_bindings_frame: self.add_binding(c, gf))
-        add_btn.pack(pady=5)
+        add_btn.pack(side="left", padx=2)
+        
+        # Add Paste button if we have something in clipboard
+        if self.clipboard:
+            paste_btn = ttk.Button(faction_buttons_frame, text=f"Paste {self.clipboard['eqp']}", 
+                               command=lambda c=self.faction_name, gf=faction_bindings_frame: self.paste_binding(gf, c))
+            paste_btn.pack(side="left", padx=2)
         
         # Then show class-specific bindings
         for cls in available_classes:
@@ -433,10 +444,20 @@ class EquipmentBindingEditor(tk.Frame):
                 for binding, source in class_bindings:
                     self.create_binding_widget(class_bindings_frame, binding, source)
             
-            # Add class binding button
-            add_btn = ttk.Button(class_frame, text="Add Class-specific Binding", 
+            # Add buttons frame
+            buttons_frame = ttk.Frame(class_frame)
+            buttons_frame.pack(pady=5)
+            
+            # Add New button
+            add_btn = ttk.Button(buttons_frame, text="Add Class-specific Binding", 
                                command=lambda c=cls, gf=class_bindings_frame: self.add_binding(c, gf))
-            add_btn.pack(pady=5)
+            add_btn.pack(side="left", padx=2)
+            
+            # Add Paste button if we have something in clipboard
+            if self.clipboard:
+                paste_btn = ttk.Button(buttons_frame, text=f"Paste {self.clipboard['eqp']}", 
+                                   command=lambda c=cls, gf=class_bindings_frame: self.paste_binding(gf, c))
+                paste_btn.pack(side="left", padx=2)
 
     def build_source_view(self):
         # Add XML viewer buttons at the top
@@ -529,10 +550,19 @@ class EquipmentBindingEditor(tk.Frame):
                 "to_entry": to_entry
             })
             
+            # Add buttons frame
+            buttons_frame = ttk.Frame(frame)
+            buttons_frame.grid(row=0, column=5, padx=5)
+            
+            # Add copy button
+            copy_btn = ttk.Button(buttons_frame, text="Copy", 
+                                command=lambda b=binding: self.copy_binding(b))
+            copy_btn.pack(side="left", padx=2)
+            
             # Add remove button
-            remove_btn = ttk.Button(frame, text="Remove", 
+            remove_btn = ttk.Button(buttons_frame, text="Remove", 
                                 command=lambda b=binding, bf=frame: self.remove_binding(b, bf))
-            remove_btn.grid(row=0, column=5, padx=5)
+            remove_btn.pack(side="left", padx=2)
             
         except Exception as e:
             messagebox.showerror("Error", f"Failed to create binding fields: {e}")
@@ -667,8 +697,13 @@ class EquipmentBindingEditor(tk.Frame):
                     except tk.TclError:
                         continue  # Skip if widget has been destroyed
 
-            # Write the XML content
-            file_path = os.path.normpath(os.path.join(self.get_mod_path(), self.binding_sources["equipment"]["path"]))
+            # Get the correct file path from mod_files
+            file_path = get_equipment_file(self.get_mod_path())
+            if not file_path:
+                messagebox.showerror("Error", "Could not determine equipment file path")
+                return
+            
+            log(f"Saving to equipment file: {file_path}")
             
             # Create formatted output
             output = ['<?xml version="1.0" encoding="utf-8"?>']
@@ -703,7 +738,7 @@ class EquipmentBindingEditor(tk.Frame):
             with open(file_path, 'w', encoding='utf-8') as f:
                 f.write('\n'.join(output))
             
-            messagebox.showinfo("Success", "Changes saved successfully")
+            messagebox.showinfo("Success", f"Changes saved to {os.path.basename(file_path)}")
             
             # Reload to show the current bindings
             self.load_all_bindings()
@@ -800,6 +835,112 @@ class EquipmentBindingEditor(tk.Frame):
             messagebox.showerror("Error", f"Failed to organize bindings: {e}")
             raise
 
+    def copy_binding(self, binding):
+        """Copy a binding to clipboard"""
+        self.clipboard = {
+            "eqp": binding.get("eqp", ""),
+            "to": binding.get("to", "")
+        }
+        # Rebuild just the buttons frames to show paste buttons
+        self.rebuild_class_buttons()
+        messagebox.showinfo("Success", f"Copied binding: {self.clipboard['eqp']}")
+
+    def paste_binding(self, binding_frame, target_class):
+        """Paste a binding from clipboard"""
+        if not self.clipboard:
+            messagebox.showerror("Error", "No binding in clipboard")
+            return
+            
+        try:
+            # Create new binding with copied eqp and target class
+            new_binding = ET.Element("Bind")
+            new_binding.set("eqp", self.clipboard["eqp"])
+            new_binding.set("to", target_class)
+            
+            # Add to XML tree
+            if "equipment" in self.binding_trees:
+                root = self.binding_trees["equipment"].getroot()
+                root.append(new_binding)
+                
+                # Add to bindings list
+                if "equipment" not in self.all_bindings:
+                    self.all_bindings["equipment"] = []
+                self.all_bindings["equipment"].append(new_binding)
+                
+                # Create UI for the new binding
+                self.create_binding_widget(binding_frame.master, new_binding, "equipment")
+                
+                messagebox.showinfo("Success", 
+                    f"Pasted binding {self.clipboard['eqp']} to {target_class}")
+            else:
+                messagebox.showerror("Error", "Equipment bindings file not found")
+                
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to paste binding: {e}")
+            raise
+
+    def rebuild_class_buttons(self):
+        """Rebuild just the button sections of each class frame"""
+        # Update faction buttons
+        faction_frame = None
+        class_frames = {}
+        
+        # Find all frames
+        for child in self.class_frame.winfo_children():
+            if isinstance(child, ttk.LabelFrame):
+                if child.cget("text").startswith("Faction:"):
+                    faction_frame = child
+                elif child.cget("text").startswith("Class:"):
+                    class_name = child.cget("text").replace("Class: ", "")
+                    class_frames[class_name] = child
+        
+        # Update faction frame buttons
+        if faction_frame:
+            # Find and remove only the buttons frame
+            for child in faction_frame.winfo_children():
+                if isinstance(child, ttk.Frame):
+                    # Check if this is the buttons frame (has buttons as direct children)
+                    if any(isinstance(grandchild, ttk.Button) for grandchild in child.winfo_children()):
+                        child.destroy()
+            
+            # Add new buttons frame
+            buttons_frame = ttk.Frame(faction_frame)
+            buttons_frame.pack(pady=5)
+            
+            # Add New button
+            add_btn = ttk.Button(buttons_frame, text="Add Faction-wide Binding", 
+                               command=lambda c=self.faction_name, gf=faction_frame.winfo_children()[0]: self.add_binding(c, gf))
+            add_btn.pack(side="left", padx=2)
+            
+            # Add Paste button if we have something in clipboard
+            if self.clipboard:
+                paste_btn = ttk.Button(buttons_frame, text=f"Paste {self.clipboard['eqp']}", 
+                                   command=lambda c=self.faction_name, gf=faction_frame.winfo_children()[0]: self.paste_binding(gf, c))
+                paste_btn.pack(side="left", padx=2)
+        
+        # Update class frames buttons
+        for cls, frame in class_frames.items():
+            # Find and remove only the buttons frame
+            for child in frame.winfo_children():
+                if isinstance(child, ttk.Frame):
+                    # Check if this is the buttons frame (has buttons as direct children)
+                    if any(isinstance(grandchild, ttk.Button) for grandchild in child.winfo_children()):
+                        child.destroy()
+            
+            # Add new buttons frame
+            buttons_frame = ttk.Frame(frame)
+            buttons_frame.pack(pady=5)
+            
+            # Add New button
+            add_btn = ttk.Button(buttons_frame, text="Add Class-specific Binding", 
+                               command=lambda c=cls, gf=frame.winfo_children()[0]: self.add_binding(c, gf))
+            add_btn.pack(side="left", padx=2)
+            
+            # Add Paste button if we have something in clipboard
+            if self.clipboard:
+                paste_btn = ttk.Button(buttons_frame, text=f"Paste {self.clipboard['eqp']}", 
+                                   command=lambda c=cls, gf=frame.winfo_children()[0]: self.paste_binding(gf, c))
+                paste_btn.pack(side="left", padx=2)
 
 def get_plugin_tab(notebook):
     """Create and return the equipment binding editor tab"""

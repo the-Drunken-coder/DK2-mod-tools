@@ -5,8 +5,9 @@ import shutil
 import time
 import threading
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from itertools import cycle
+import re
 
 class Spinner:
     def __init__(self):
@@ -336,18 +337,87 @@ def zip_release_files(output_dir):
         log(f"Failed to create release archive: {str(e)}", "ERROR")
         return False
 
+def get_latest_version():
+    """Get the latest version from git tags"""
+    try:
+        # Get the latest tag
+        result = subprocess.run(['git', 'describe', '--tags', '--abbrev=0'], 
+                              capture_output=True, text=True)
+        if result.returncode == 0:
+            # Remove 'v' prefix if present and return
+            return result.stdout.strip().lstrip('v')
+    except Exception:
+        pass
+    return "0.1.0"  # Default if no tags found
+
+def get_changes_since_last_tag():
+    """Get all commit messages since the last tag"""
+    try:
+        # Get the latest tag
+        tag_result = subprocess.run(['git', 'describe', '--tags', '--abbrev=0'],
+                                  capture_output=True, text=True)
+        if tag_result.returncode != 0:
+            # If no tags exist, get all commits
+            commits = subprocess.run(['git', 'log', '--pretty=format:%s'],
+                                  capture_output=True, text=True)
+        else:
+            # Get commits since last tag
+            commits = subprocess.run(['git', 'log', f'{tag_result.stdout.strip()}..HEAD', '--pretty=format:%s'],
+                                  capture_output=True, text=True)
+
+        if commits.returncode == 0:
+            changes = commits.stdout.strip().split('\n')
+            
+            # Categorize changes based on commit message prefixes
+            categorized = {
+                'Added': [],
+                'Changed': [],
+                'Fixed': [],
+                'Other': []
+            }
+            
+            for change in changes:
+                if change.lower().startswith(('add', 'new', 'implement')):
+                    categorized['Added'].append(change)
+                elif change.lower().startswith(('change', 'update', 'improve', 'enhance')):
+                    categorized['Changed'].append(change)
+                elif change.lower().startswith(('fix', 'bug', 'resolve')):
+                    categorized['Fixed'].append(change)
+                else:
+                    categorized['Other'].append(change)
+            
+            # Format the changes
+            formatted = []
+            for category, items in categorized.items():
+                if items:
+                    formatted.append(f"### {category}")
+                    formatted.extend(f"- {item}" for item in items)
+                    formatted.append("")  # Add blank line between categories
+            
+            return "\n".join(formatted)
+    except Exception as e:
+        log(f"Error getting changes: {str(e)}", "ERROR")
+    
+    return "No changes documented"
+
 def create_github_release():
     """Create a GitHub release with the installer"""
     log("Creating GitHub release...")
     
     output_dir = Path('output')
+    output_dir.mkdir(exist_ok=True)  # Create output directory if it doesn't exist
+    
     installer_path = output_dir / 'DK2ModdingTool_Setup.exe'
     if not installer_path.exists():
         log("Installer not found! Please build it first.", "ERROR")
         return False
-        
+    
+    # Get version and changes from git
+    version = get_latest_version()
+    changes = get_changes_since_last_tag()
+    
     # Create release notes
-    release_notes = f'''# Door Kickers 2 Modding Tool Release
+    release_notes = f'''# Door Kickers 2 Modding Tool v{version}
 
 ## Installation
 1. Download DK2ModdingTool_Setup.exe
@@ -356,11 +426,7 @@ def create_github_release():
 4. Launch the tool from the Start Menu or Desktop shortcut
 
 ## Changes in this version
-- GUI Layout Editor improvements
-- Equipment binding fixes
-- Improved mod file handling
-- Better error handling
-- Various bug fixes and improvements
+{changes}
 
 ## Known Issues
 Please see the README.md for current known issues and limitations.
@@ -370,7 +436,7 @@ If you encounter any issues, please report them on the GitHub issues page.
 '''
     
     release_notes_path = output_dir / 'RELEASE_NOTES.md'
-    with open(release_notes_path, 'w') as f:
+    with open(release_notes_path, 'w', encoding='utf-8') as f:
         f.write(release_notes)
             
     log("Release files prepared successfully!")
@@ -382,9 +448,9 @@ If you encounter any issues, please report them on the GitHub issues page.
     log("\nTo create the GitHub release:")
     log("1. Go to your GitHub repository")
     log("2. Click 'Releases' then 'Create new release'")
-    log("3. Create a new tag (e.g. v0.1.0)")
+    log(f"3. Create a new tag (e.g. v{version})")
     log("4. Upload the files from the 'output' directory:")
-    log("   - DK2ModdingTool_v0.1.0_release.zip (contains all release files)")
+    log(f"   - DK2ModdingTool_v{version}_release.zip (contains all release files)")
     log("5. Copy the contents of RELEASE_NOTES.md into the release description")
     log("6. Click 'Publish release'")
     

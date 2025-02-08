@@ -4,6 +4,9 @@ from tkinter import ttk, messagebox, filedialog
 import os
 import json
 import glob
+import shutil
+import xml.etree.ElementTree as ET
+from datetime import datetime
 
 PLUGIN_TITLE = "Configuration"
 CONFIG_FILE = "modding_tool_config.json"
@@ -138,6 +141,147 @@ def save_config(config):
         print(f"Error saving config: {e}")
         return False
 
+def sanitize_mod_name(mod_name):
+    """Sanitize mod name to be filesystem safe"""
+    # Replace spaces with underscores and remove invalid characters
+    import re
+    # Remove or replace invalid characters
+    safe_name = re.sub(r'[<>:"/\\|?*]', '', mod_name)
+    # Replace spaces with underscores
+    safe_name = safe_name.replace(' ', '_')
+    # Remove any non-ASCII characters
+    safe_name = ''.join(c for c in safe_name if ord(c) < 128)
+    return safe_name
+
+def create_mod_template(mod_path, mod_name, author="", description=""):
+    """Create a new mod template with basic structure based on Baby Seals template"""
+    try:
+        # Sanitize mod name
+        safe_mod_name = sanitize_mod_name(mod_name)
+        if not safe_mod_name:
+            return False, "Invalid mod name. Please use only letters, numbers, and basic punctuation."
+            
+        # Create full mod path
+        full_mod_path = os.path.join(mod_path, safe_mod_name)
+        if os.path.exists(full_mod_path):
+            # Ask user if they want to overwrite
+            if not messagebox.askyesno("Directory Exists", 
+                f"The mod directory '{safe_mod_name}' already exists.\nDo you want to overwrite it?"):
+                return False, "Operation cancelled by user"
+            try:
+                # Remove existing directory
+                shutil.rmtree(full_mod_path)
+            except Exception as e:
+                return False, f"Failed to remove existing directory: {str(e)}"
+
+        # Create main mod directory
+        os.makedirs(full_mod_path)
+
+        # Create required subdirectories
+        subdirs = [
+            "gui",
+            "units",
+            "textures",
+            "localization",
+            "equipment",
+            "entities"
+        ]
+        for subdir in subdirs:
+            os.makedirs(os.path.join(full_mod_path, subdir))
+
+        # Create mod.xml content directly as a string
+        mod_xml_content = '''<?xml version="1.0" encoding="utf-8"?>
+<!--
+"title" uniquely identifies the mod name in Steam Workshop. Once published to workshop, the mod name can no longer be changed.
+"description" what is says
+"author" what is says
+"tags" only show up in Steam Workshop. comma-separated values. preferably one of: 
+    Missions,Campaign,New Unit,UI,Equipment,Sound,Translation,Total Conversion,Other
+"gameVersion" game version with which the mod is compatible (if the game says we're at 0.35 gameVersion="35". If the game says 1.24 gameVersion="124")
+"changeNotes" only used when updating an already published mod, redundant otherwise
+"languageMod" should only be valid if this adds a new language to the game, in which case it will show up in the Languages options list
+-->
+<Mod title="{title}" description="{description}" author="{author}" tags="New Unit" gameVersion="100"/>
+'''
+        # Write mod.xml with proper formatting
+        with open(os.path.join(full_mod_path, "mod.xml"), 'w', encoding='utf-8') as f:
+            f.write(mod_xml_content.format(
+                title=mod_name,
+                description=description if description else f"A new mod created with DK2 Modding Tool",
+                author=author if author else "Unknown"
+            ))
+
+        # Create basic XML files in each directory
+        xml_templates = {
+            "units/unit.xml": '''<?xml version="1.0" ?>
+<root>
+    <Unit name="FACTION">
+        <Classes>
+            <!-- Add your unit classes here -->
+        </Classes>
+        <Ranks>
+            <!-- Add your ranks here -->
+        </Ranks>
+        <TrooperRanks>
+            <!-- Add your trooper ranks here -->
+        </TrooperRanks>
+    </Unit>
+</root>''',
+            "equipment/binds.xml": '''<?xml version="1.0" ?>
+<Equipment>
+    <!-- Add your equipment bindings here -->
+</Equipment>''',
+            "entities/humans.xml": '''<?xml version="1.0" ?>
+<Entities>
+    <!-- Add your human entity definitions here -->
+</Entities>''',
+            "gui/deploy.xml": '''<?xml version="1.0" ?>
+<GUIItems>
+    <EventActionBatch name="GAME_GUI_LOADTIME_ACTIONS">
+        <Action type="Show" target="FACTION"/>
+    </EventActionBatch>
+    <Item name="FACTION" origin="0 -454" hidden="true" align="rt" sizeX="380">
+        <!-- Add your GUI layout here -->
+    </Item>
+</GUIItems>'''
+        }
+
+        # Write template files
+        for rel_path, content in xml_templates.items():
+            file_path = os.path.join(full_mod_path, rel_path)
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+
+        # Create placeholder image
+        placeholder_image_path = os.path.join(full_mod_path, "mod_image.jpg")
+        # Create a simple colored image using PIL
+        try:
+            from PIL import Image, ImageDraw, ImageFont
+            img = Image.new('RGB', (512, 512), color='#2b2b2b')
+            draw = ImageDraw.Draw(img)
+            # Add mod name text
+            try:
+                font = ImageFont.truetype("arial.ttf", 40)
+            except:
+                font = ImageFont.load_default()
+            text = mod_name
+            bbox = draw.textbbox((0, 0), text, font=font)
+            text_width = bbox[2] - bbox[0]
+            text_height = bbox[3] - bbox[1]
+            x = (512 - text_width) // 2
+            y = (512 - text_height) // 2
+            draw.text((x, y), text, font=font, fill='#ffffff')
+            img.save(placeholder_image_path, "JPEG")
+        except ImportError:
+            # If PIL is not available, create an empty file
+            with open(placeholder_image_path, 'wb') as f:
+                f.write(b'')
+
+        return True, f"Successfully created mod template: {mod_name}"
+
+    except Exception as e:
+        return False, f"Error creating mod template: {str(e)}"
+
 class ConfigEditor(tk.Frame):
     def __init__(self, parent):
         super().__init__(parent)
@@ -172,43 +316,81 @@ class ConfigEditor(tk.Frame):
         main_frame = ttk.LabelFrame(self, text="Configuration Settings", padding="10")
         main_frame.pack(fill="both", expand=True, padx=10, pady=5)
 
+        # Add Create New Mod section
+        create_mod_frame = ttk.LabelFrame(main_frame, text="Create New Mod")
+        create_mod_frame.pack(fill="x", padx=5, pady=5)
+        
+        # Mod name entry
+        ttk.Label(create_mod_frame, text="Mod Name:").pack(anchor="w", padx=5, pady=2)
+        self.mod_name_var = tk.StringVar()
+        mod_name_entry = ttk.Entry(create_mod_frame, textvariable=self.mod_name_var)
+        mod_name_entry.pack(fill="x", padx=5, pady=2)
+        
+        # Author entry
+        ttk.Label(create_mod_frame, text="Author:").pack(anchor="w", padx=5, pady=2)
+        self.author_var = tk.StringVar()
+        author_entry = ttk.Entry(create_mod_frame, textvariable=self.author_var)
+        author_entry.pack(fill="x", padx=5, pady=2)
+        
+        # Description entry
+        ttk.Label(create_mod_frame, text="Description:").pack(anchor="w", padx=5, pady=2)
+        self.desc_var = tk.StringVar()
+        desc_entry = ttk.Entry(create_mod_frame, textvariable=self.desc_var)
+        desc_entry.pack(fill="x", padx=5, pady=2)
+        
+        # Create Mod button
+        ttk.Button(create_mod_frame, text="Create Mod", command=self.create_new_mod).pack(anchor="e", padx=5, pady=5)
+        
+        # Add separator
+        ttk.Separator(main_frame, orient="horizontal").pack(fill="x", padx=5, pady=10)
+        
+        # Paths section
+        paths_frame = ttk.Frame(main_frame)
+        paths_frame.pack(fill="x", padx=5, pady=5)
+        
         # Mod Directory
-        ttk.Label(main_frame, text="Mod Directory:").grid(row=0, column=0, sticky="w", pady=5)
+        mod_dir_frame = ttk.Frame(paths_frame)
+        mod_dir_frame.pack(fill="x", pady=2)
+        ttk.Label(mod_dir_frame, text="Mod Directory:").pack(side="left", padx=5)
         self.mod_path_var = tk.StringVar(value=self.config.get("mod_path", ""))
-        mod_path_entry = ttk.Entry(main_frame, textvariable=self.mod_path_var, width=50)
-        mod_path_entry.grid(row=0, column=1, padx=5)
-        ttk.Button(main_frame, text="Browse", 
-                  command=lambda: self.browse_directory("mod_path")).grid(row=0, column=2)
+        mod_path_entry = ttk.Entry(mod_dir_frame, textvariable=self.mod_path_var, width=50)
+        mod_path_entry.pack(side="left", fill="x", expand=True, padx=5)
+        ttk.Button(mod_dir_frame, text="Browse", 
+                  command=lambda: self.browse_directory("mod_path")).pack(side="left", padx=5)
 
         # Game Directory
-        ttk.Label(main_frame, text="Game Directory:").grid(row=1, column=0, sticky="w", pady=5)
+        game_dir_frame = ttk.Frame(paths_frame)
+        game_dir_frame.pack(fill="x", pady=2)
+        ttk.Label(game_dir_frame, text="Game Directory:").pack(side="left", padx=5)
         self.game_path_var = tk.StringVar(value=self.config.get("game_path", ""))
-        game_path_entry = ttk.Entry(main_frame, textvariable=self.game_path_var, width=50)
-        game_path_entry.grid(row=1, column=1, padx=5)
-        ttk.Button(main_frame, text="Browse", 
-                  command=lambda: self.browse_directory("game_path")).grid(row=1, column=2)
+        game_path_entry = ttk.Entry(game_dir_frame, textvariable=self.game_path_var, width=50)
+        game_path_entry.pack(side="left", fill="x", expand=True, padx=5)
+        ttk.Button(game_dir_frame, text="Browse", 
+                  command=lambda: self.browse_directory("game_path")).pack(side="left", padx=5)
 
         # Auto-detect button
-        ttk.Button(main_frame, text="Auto-Detect Paths", 
-                  command=self.auto_detect_paths).grid(row=2, column=0, columnspan=3, pady=10)
+        ttk.Button(paths_frame, text="Auto-Detect Paths", 
+                  command=self.auto_detect_paths).pack(pady=10)
 
-        # Last Used Mod
-        ttk.Label(main_frame, text="Current Mod:").grid(row=3, column=0, sticky="w", pady=5)
+        # Current Mod section
+        mod_frame = ttk.Frame(main_frame)
+        mod_frame.pack(fill="x", padx=5, pady=5)
+        ttk.Label(mod_frame, text="Current Mod:").pack(side="left", padx=5)
         self.current_mod_var = tk.StringVar(value=self.config.get("last_used_mod", ""))
-        self.mod_combo = ttk.Combobox(main_frame, textvariable=self.current_mod_var, width=47)
-        self.mod_combo.grid(row=3, column=1, padx=5)
+        self.mod_combo = ttk.Combobox(mod_frame, textvariable=self.current_mod_var, width=47)
+        self.mod_combo.pack(side="left", fill="x", expand=True, padx=5)
         self.update_mod_list()
 
         # Validation Status
         self.status_label = ttk.Label(main_frame, text="", foreground="green")
-        self.status_label.grid(row=4, column=0, columnspan=3, pady=10)
+        self.status_label.pack(fill="x", padx=5, pady=10)
 
-        # Save Button
-        save_frame = ttk.Frame(main_frame)
-        save_frame.grid(row=5, column=0, columnspan=3, pady=10)
-        ttk.Button(save_frame, text="Save Changes", 
+        # Buttons frame
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill="x", padx=5, pady=5)
+        ttk.Button(button_frame, text="Save Changes", 
                   command=self.save_changes).pack(side="right", padx=5)
-        ttk.Button(save_frame, text="Validate Paths", 
+        ttk.Button(button_frame, text="Validate Paths", 
                   command=self.validate_paths).pack(side="right", padx=5)
 
         # Bind path changes to validation
@@ -362,6 +544,36 @@ class ConfigEditor(tk.Frame):
                              "Could not automatically detect Door Kickers 2 installation.\n\n"
                              "Would you like to browse for it manually?"):
             self.browse_directory("game_path")
+
+    def create_new_mod(self):
+        mod_name = self.mod_name_var.get().strip()
+        if not mod_name:
+            messagebox.showerror("Error", "Please enter a mod name")
+            return
+            
+        config = load_config()
+        mod_path = config.get("mod_path")
+        if not mod_path:
+            messagebox.showerror("Error", "Please configure mod path first")
+            return
+            
+        success, message = create_mod_template(
+            mod_path, 
+            mod_name,
+            self.author_var.get().strip(),
+            self.desc_var.get().strip()
+        )
+        
+        if success:
+            messagebox.showinfo("Success", message)
+            # Clear entries
+            self.mod_name_var.set("")
+            self.author_var.set("")
+            self.desc_var.set("")
+            # Trigger configuration changed event to refresh mod list
+            self.event_generate("<<ConfigurationChanged>>")
+        else:
+            messagebox.showerror("Error", message)
 
 def get_plugin_tab(notebook):
     """Create and return the configuration editor tab"""

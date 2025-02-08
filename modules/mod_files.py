@@ -47,7 +47,8 @@ class ModFiles:
         unit_dir = self.ensure_directory(os.path.normpath(os.path.join(self.mod_path, "units")))
         if os.path.exists(unit_dir):
             for file in os.listdir(unit_dir):
-                if file.endswith("_unit.xml"):
+                # Accept both _unit.xml and _units.xml
+                if file.endswith("_unit.xml") or file.endswith("_units.xml"):
                     full_path = os.path.normpath(os.path.join(unit_dir, file))
                     unit_files.append((full_path, os.path.getsize(full_path)))
         if unit_files:
@@ -56,9 +57,15 @@ class ModFiles:
             self.files["unit"] = unit_files[0][0]
             log(f"Found unit file: {os.path.basename(self.files['unit'])}")
         else:
+            # Try both unit.xml and units.xml as defaults
             default_unit = os.path.normpath(os.path.join(unit_dir, "unit.xml"))
-            self.files["unit"] = default_unit
-            log("Using default unit file: unit.xml")
+            default_units = os.path.normpath(os.path.join(unit_dir, "units.xml"))
+            if os.path.exists(default_units):
+                self.files["unit"] = default_units
+                log("Using default units file: units.xml")
+            else:
+                self.files["unit"] = default_unit
+                log("Using default unit file: unit.xml")
 
         # Find equipment binds file
         equipment_files = []
@@ -74,9 +81,12 @@ class ModFiles:
             self.files["equipment"] = equipment_files[0][0]
             log(f"Found equipment file: {os.path.basename(self.files['equipment'])}")
         else:
-            default_binds = os.path.normpath(os.path.join(equipment_dir, "binds.xml"))
+            # If no existing file found, create a new one with the mod name prefix
+            mod_name = os.path.basename(self.mod_path).lower()
+            mod_name = mod_name.replace(" ", "_")
+            default_binds = os.path.normpath(os.path.join(equipment_dir, f"{mod_name}_binds.xml"))
             self.files["equipment"] = default_binds
-            log("Using default equipment file: binds.xml")
+            log(f"Using new equipment file: {os.path.basename(default_binds)}")
 
         # Find entities file
         entities_files = []
