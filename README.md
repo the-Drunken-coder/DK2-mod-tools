@@ -161,4 +161,37 @@ dk2-modding-tool/
 
 ## License
 
-MIT License - See LICENSE file for details 
+MIT License - See LICENSE file for details
+
+### Mod Structure
+Any folder in your DK2 mods directory will be treated as a mod. The following structure shows the standard mod layout and file naming conventions:
+
+#### Standard Directory Structure
+- `gui/` - GUI layouts
+  - `*_deploy.xml` - Deploy screen layouts
+  - `*_gui.xml` - General GUI layouts
+  - Other GUI XML files
+- `units/` - Unit definitions
+  - `*_unit.xml` - Unit definitions
+  - `*_identities.xml` - Unit identities
+- `entities/` - Entity definitions
+  - `*_humans.xml` - Human entity definitions
+  - `*_entities.xml` - Other entity definitions
+- `equipment/` - Equipment definitions
+  - `*_binds.xml` - Equipment bindings
+  - `*_equipment.xml` - Equipment definitions
+- `textures/` - Texture files
+  - `*_squad_bg.dds` - Squad backgrounds
+  - Other texture files (`.dds`, `.jpg`, `.png`)
+- `localization/` - Localization files
+  - `*_squadname_pool.txt` - Squad name pools
+  - `*_strings.xml` - String tables
+
+#### Common Files
+- `mod.xml` - Mod metadata (title, description, author)
+- `mod_image.jpg` - Mod preview image
+
+All directories and files are optional - create only what you need for your mod.
+
+### GUI Editor Limitations
+⚠️ **The GUI Editor cannot read most existing GUI layouts.** You will need to recreate your GUI layouts from scratch using the GUI editor. This is a known limitation of the current version. 

@@ -80,23 +80,14 @@ def get_directory_files(directory, patterns):
     return [os.path.basename(f) for f in files]
 
 def is_valid_mod_directory(mod_dir):
-    """Check if a directory contains a valid mod structure"""
+    """Check if a directory is a mod directory"""
     if not os.path.isdir(mod_dir):
         return False, "Not a directory"
     
-    # Only check for mod.xml - everything else is optional
-    if not os.path.exists(os.path.join(mod_dir, "mod.xml")):
-        # Special case: if it's a localization folder, it's valid without mod.xml
-        if os.path.basename(mod_dir).startswith("localization_"):
-            return True, {"type": "localization"}
-        # Special case: if it's the os_steam_deck folder, it's valid
-        if os.path.basename(mod_dir) == "os_steam_deck":
-            return True, {"type": "steam_deck"}
-        return False, "Missing mod.xml"
-    
+    # All directories are considered valid mods
     found_files = {"type": "mod"}
     
-    # Check all optional directories
+    # Still scan for files to help with file management
     for dir_name, patterns in MOD_STRUCTURE["optional_dirs"].items():
         dir_path = os.path.join(mod_dir, dir_name)
         if os.path.isdir(dir_path):
@@ -108,18 +99,17 @@ def is_valid_mod_directory(mod_dir):
 
 def get_mod_info(mod_dir):
     """Get basic information about a mod"""
-    is_valid, result = is_valid_mod_directory(mod_dir)
     info = {
         "name": os.path.basename(mod_dir),
         "has_image": os.path.exists(os.path.join(mod_dir, "mod_image.jpg")),
-        "is_valid": is_valid,
-        "type": result.get("type", "unknown") if isinstance(result, dict) else "unknown"
+        "is_valid": True,  # All directories are valid
+        "type": "mod"
     }
     
-    if is_valid and isinstance(result, dict):
+    # Still scan for files to help with file management
+    is_valid, result = is_valid_mod_directory(mod_dir)
+    if isinstance(result, dict):
         info["files"] = result
-    else:
-        info["error"] = result
         
     return info
 
@@ -243,26 +233,20 @@ class ConfigEditor(tk.Frame):
         """Update the list of available mods in the selected mod directory"""
         mod_path = self.mod_path_var.get()
         mods = []
-        special_mods = []  # For localization and steam deck mods
         
         if os.path.exists(mod_path):
             for item in os.listdir(mod_path):
                 item_path = os.path.join(mod_path, item)
                 if os.path.isdir(item_path):
-                    is_valid, result = is_valid_mod_directory(item_path)
-                    if is_valid:
-                        if isinstance(result, dict) and result.get("type") in ["localization", "steam_deck"]:
-                            special_mods.append(item)
-                        else:
-                            mods.append(item)
+                    mods.append(item)
         
-        # Update combobox with regular mods first, then special mods
-        self.mod_combo['values'] = mods + special_mods
+        # Update combobox with all mods
+        self.mod_combo['values'] = sorted(mods)
         
-        if not mods and not special_mods:
+        if not mods:
             self.current_mod_var.set("")
-        elif self.current_mod_var.get() not in (mods + special_mods):
-            self.current_mod_var.set(mods[0] if mods else special_mods[0] if special_mods else "")
+        elif self.current_mod_var.get() not in mods:
+            self.current_mod_var.set(mods[0] if mods else "")
 
     def validate_paths(self):
         """Validate the configured paths"""
