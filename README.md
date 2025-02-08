@@ -21,6 +21,21 @@ These errors occur because the file paths are not yet configured. To fix this:
 
 The errors will disappear after saving your configuration. This is a one-time setup process.
 
+## ⚠️ Important Mod Selection Note ⚠️
+**You must select a mod to work on before using any features!**
+The tool defaults to your DK2 mods folder location:
+```
+C:\Program Files (x86)\Steam\steamapps\common\DoorKickers2\mods
+```
+To select a mod:
+1. Go to the Configuration tab
+2. Choose your mod from the "Current Mod" dropdown
+3. Click "Save Changes"
+
+If your mod isn't listed, verify that:
+- Your mod folder exists in the DK2 mods directory
+- The mod path is correctly set in the Configuration tab
+
 ## Important Notes
 
 ### GUI Editor Limitations
