@@ -3,7 +3,8 @@ from tkinter import ttk, messagebox
 import xml.etree.ElementTree as ET
 import os
 import shutil
-from modules import config_editor_module, mod_files
+# Use relative imports when inside a package
+from . import config_editor_module, mod_files
 from modding_tool import get_gui_file
 
 PLUGIN_TITLE = "GUI Editor"
@@ -11,6 +12,12 @@ PLUGIN_TITLE = "GUI Editor"
 def get_plugin_tab(notebook):
     """Create and return the GUI editor tab"""
     return PLUGIN_TITLE, GUIEditor(notebook)
+
+# Add guard against direct execution
+if __name__ == "__main__":
+    print("This module is not meant to be run directly. Please run modding_tool.py instead.")
+    import sys
+    sys.exit(1)
 
 class DraggableFrame(tk.Frame):
     def __init__(self, parent, editor, title, color, row_index, width_cells=2, height_cells=1, *args, **kwargs):
@@ -195,7 +202,49 @@ class DraggableFrame(tk.Frame):
         # Add back the Class suffix for storage
         self.slot_classes[slot_index] = class_name + "Class" if class_name != "unused" else "unusedClass"
         print(f"  Final class value: {self.slot_classes[slot_index]}")
-        self.editor.save_layout(show_popup=False)
+
+        # Update the unit XML with new slot counts
+        self.update_unit_slots()
+
+    def update_unit_slots(self):
+        """Update the numSlots values in the unit XML based on current slot assignments"""
+        try:
+            # Get the unit file path
+            unit_file = self.editor.mod_files.get_unit_file()
+            if not unit_file or not os.path.exists(unit_file):
+                print(f"No unit file found at {unit_file}")
+                return
+
+            # Parse the unit XML
+            tree = ET.parse(unit_file)
+            root = tree.getroot()
+            
+            # Find Classes element
+            classes_elem = root.find('.//Classes')
+            if classes_elem is None:
+                print("No Classes element found in units XML")
+                return
+
+            # Count slots per class in this frame
+            slot_counts = {}
+            for slot_idx, class_name in self.slot_classes.items():
+                if class_name != "unusedClass":
+                    # Remove "Class" suffix if it exists
+                    base_name = class_name[:-5] if class_name.endswith("Class") else class_name
+                    slot_counts[base_name] = slot_counts.get(base_name, 0) + 1
+
+            # Update numSlots for each class
+            for class_elem in classes_elem.findall('Class'):
+                class_name = class_elem.get('name', '')
+                if class_name in slot_counts:
+                    class_elem.set('numSlots', str(slot_counts[class_name]))
+
+            # Save the changes
+            tree.write(unit_file, encoding='utf-8', xml_declaration=True)
+            print(f"Updated slot counts in unit file: {slot_counts}")
+
+        except Exception as e:
+            print(f"Error updating unit slots: {str(e)}")
 
     def get_slot_class(self, slot_index):
         class_name = self.slot_classes.get(slot_index, "unusedClass")

@@ -103,7 +103,10 @@ def build_executable():
     """Build the executable using PyInstaller"""
     log("Starting executable build process...")
     
-    # Clean previous builds
+    # Clean previous builds and create output directory
+    output_dir = Path('output')
+    output_dir.mkdir(exist_ok=True)
+    
     for path in ['build', 'dist']:
         if os.path.exists(path):
             log(f"Cleaning {path} directory...")
@@ -147,6 +150,7 @@ def build_executable():
         '--collect-all=tkinter '  # Ensure tkinter is fully included
         '--noconsole '
         '--log-level=INFO '
+        '--distpath output '  # Set output directory to output/
         'modding_tool.py'
     )
     
@@ -154,7 +158,7 @@ def build_executable():
     run_command(command)
     
     # Verify the build
-    exe_path = os.path.join('dist', 'DK2ModdingTool.exe')
+    exe_path = os.path.join('output', 'DK2ModdingTool.exe')
     if os.path.exists(exe_path):
         size_mb = os.path.getsize(exe_path) / (1024 * 1024)
         log(f"Executable built successfully at {exe_path} (Size: {size_mb:.2f}MB)")
@@ -165,6 +169,10 @@ def build_executable():
 def create_installer():
     """Create the installer using Inno Setup"""
     log("Starting installer creation process...")
+    
+    # Create output directory if it doesn't exist
+    output_dir = Path('output')
+    output_dir.mkdir(exist_ok=True)
     
     # Inno Setup script
     log("Generating Inno Setup script...")
@@ -187,7 +195,7 @@ DefaultDirName={userdocs}\{#MyAppName}
 DisableDirPage=no
 DisableProgramGroupPage=yes
 LicenseFile=LICENSE
-OutputDir=installer
+OutputDir=output
 OutputBaseFilename=DK2ModdingTool_Setup
 SetupIconFile=resources/icon.ico
 Compression=lzma
@@ -208,7 +216,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
-Source: "dist\DK2ModdingTool.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "output\DK2ModdingTool.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "utils.py"; DestDir: "{app}"; Flags: ignoreversion
@@ -256,19 +264,14 @@ begin
 end;
 '''
     
-    # Create installer directory if it doesn't exist
-    installer_dir = Path('installer')
-    installer_dir.mkdir(exist_ok=True)
-    
     # Write Inno Setup script
     log("Writing Inno Setup script to installer.iss...")
     with open('installer.iss', 'w') as f:
         f.write(iss_script)
     
-    # Verify required files
     log("Verifying required files...")
     required_files = [
-        'dist/DK2ModdingTool.exe',
+        'output/DK2ModdingTool.exe',
         'README.md',
         'LICENSE',
         'resources/icon.ico'
@@ -293,7 +296,7 @@ end;
     run_command(f'{iscc_path} installer.iss')
     
     # Verify installer was created
-    installer_path = os.path.join('installer', 'DK2ModdingTool_Setup.exe')
+    installer_path = os.path.join('output', 'DK2ModdingTool_Setup.exe')
     if os.path.exists(installer_path):
         size_mb = os.path.getsize(installer_path) / (1024 * 1024)
         log(f"Installer created successfully at {installer_path} (Size: {size_mb:.2f}MB)")
@@ -301,22 +304,30 @@ end;
         log("Failed to find created installer!", "ERROR")
         sys.exit(1)
 
-def zip_release_files(release_dir):
+def zip_release_files(output_dir):
     """Create a zip archive of the release files"""
     log("Creating release archive...")
     try:
         # Create zip file with version number
-        version = "0.1.0"  # This should match MyAppVersion in create_installer
+        version = "0.1.0"  # TODO: Get this from a version file
         zip_name = f'DK2ModdingTool_v{version}_release.zip'
-        zip_path = Path(zip_name)  # Create in main directory
+        zip_path = output_dir / zip_name
         
         # Create zip file
         import zipfile
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-            # Add each file in the release directory
-            for file in release_dir.glob('*'):
-                log(f"Adding {file.name} to release archive...")
-                zipf.write(file, file.name)
+            # Add executable and installer
+            for file in ['DK2ModdingTool.exe', 'DK2ModdingTool_Setup.exe']:
+                file_path = output_dir / file
+                if file_path.exists():
+                    log(f"Adding {file} to release archive...")
+                    zipf.write(file_path, file)
+            
+            # Add documentation files
+            for file in ['README.md', 'LICENSE']:
+                if os.path.exists(file):
+                    log(f"Adding {file} to release archive...")
+                    zipf.write(file, file)
         
         size_mb = os.path.getsize(zip_path) / (1024 * 1024)
         log(f"Release archive created successfully: {zip_path} (Size: {size_mb:.2f}MB)")
@@ -329,27 +340,14 @@ def create_github_release():
     """Create a GitHub release with the installer"""
     log("Creating GitHub release...")
     
-    installer_path = os.path.join('installer', 'DK2ModdingTool_Setup.exe')
-    if not os.path.exists(installer_path):
+    output_dir = Path('output')
+    installer_path = output_dir / 'DK2ModdingTool_Setup.exe'
+    if not installer_path.exists():
         log("Installer not found! Please build it first.", "ERROR")
         return False
         
-    # Create release directory
-    release_dir = Path('release')
-    release_dir.mkdir(exist_ok=True)
-    
-    # Copy files to release directory
-    log("Copying files to release directory...")
-    try:
-        # Copy installer
-        shutil.copy2(installer_path, release_dir / 'DK2ModdingTool_Setup.exe')
-        
-        # Copy README and LICENSE
-        shutil.copy2('README.md', release_dir / 'README.md')
-        shutil.copy2('LICENSE', release_dir / 'LICENSE')
-        
-        # Create release notes
-        release_notes = f'''# Door Kickers 2 Modding Tool Release
+    # Create release notes
+    release_notes = f'''# Door Kickers 2 Modding Tool Release
 
 ## Installation
 1. Download DK2ModdingTool_Setup.exe
@@ -370,30 +368,27 @@ Please see the README.md for current known issues and limitations.
 ## Support
 If you encounter any issues, please report them on the GitHub issues page.
 '''
-        
-        with open(release_dir / 'RELEASE_NOTES.md', 'w') as f:
-            f.write(release_notes)
+    
+    release_notes_path = output_dir / 'RELEASE_NOTES.md'
+    with open(release_notes_path, 'w') as f:
+        f.write(release_notes)
             
-        log("Release files prepared successfully!")
-        
-        # Create zip archive of release files
-        if not zip_release_files(release_dir):
-            return False
-            
-        log("\nTo create the GitHub release:")
-        log("1. Go to your GitHub repository")
-        log("2. Click 'Releases' then 'Create new release'")
-        log("3. Create a new tag (e.g. v0.1.0)")
-        log("4. Upload the files from the 'release' directory:")
-        log("   - DK2ModdingTool_v0.1.0_release.zip (contains all release files)")
-        log("5. Copy the contents of RELEASE_NOTES.md into the release description")
-        log("6. Click 'Publish release'")
-        
-        return True
-        
-    except Exception as e:
-        log(f"Failed to prepare release: {str(e)}", "ERROR")
+    log("Release files prepared successfully!")
+    
+    # Create zip archive of release files
+    if not zip_release_files(output_dir):
         return False
+            
+    log("\nTo create the GitHub release:")
+    log("1. Go to your GitHub repository")
+    log("2. Click 'Releases' then 'Create new release'")
+    log("3. Create a new tag (e.g. v0.1.0)")
+    log("4. Upload the files from the 'output' directory:")
+    log("   - DK2ModdingTool_v0.1.0_release.zip (contains all release files)")
+    log("5. Copy the contents of RELEASE_NOTES.md into the release description")
+    log("6. Click 'Publish release'")
+    
+    return True
 
 def main():
     log("Starting build process...")
@@ -402,8 +397,7 @@ def main():
     cleanup_paths = [
         'build', 
         'dist', 
-        'installer',
-        'release',
+        'output',
         '__pycache__',
         'modules/__pycache__',
         'DK2ModdingTool.spec'
@@ -446,6 +440,10 @@ def main():
         log("Found icon file")
     
     try:
+        # Create output directory
+        output_dir = Path('output')
+        output_dir.mkdir(exist_ok=True)
+        
         # Build executable
         build_executable()
         
@@ -456,6 +454,11 @@ def main():
         create_github_release()
         
         log("Build process completed successfully!")
+        log("\nAll output files are in the 'output' directory:")
+        log("- DK2ModdingTool.exe (Executable)")
+        log("- DK2ModdingTool_Setup.exe (Installer)")
+        log("- DK2ModdingTool_v0.1.0_release.zip (Release archive)")
+        log("- RELEASE_NOTES.md")
         
     except Exception as e:
         log(f"Build process failed: {str(e)}", "ERROR")

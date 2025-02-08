@@ -74,16 +74,17 @@ If the automatic detection fails:
 - Visual editor for equipment assignments
 
 ### GUI Layout Editor
-- Visual drag-and-drop interface for deploy screen layout
-- Support for 2x1, 4x1, and 4x2 unit boxes
-- Class-specific slot assignments
-- Real-time preview of changes
-- **Note:** Cannot import existing GUI layouts - must be recreated from scratch
+- Visual editor for creating and modifying unit deployment layouts
+- Support for different box sizes (2x1, 4x1, 4x2)
+- Drag and drop interface for positioning boxes
+- Slot assignment system for equipment classes
+- Automatic synchronization with unit XML files
 
 ### Units Editor
-- Edit unit templates and properties
-- Configure ranks and trooper ranks
-- Manage unit attributes and equipment
+- Create and edit unit classes
+- Manage trooper ranks and regular ranks
+- Edit unit attributes and properties
+- Preserves equipment slot counts between edits
 
 ### Entities Editor
 - Edit human entity templates
@@ -194,4 +195,37 @@ Any folder in your DK2 mods directory will be treated as a mod. The following st
 All directories and files are optional - create only what you need for your mod.
 
 ### GUI Editor Limitations
-⚠️ **The GUI Editor cannot read most existing GUI layouts.** You will need to recreate your GUI layouts from scratch using the GUI editor. This is a known limitation of the current version. 
+⚠️ **The GUI Editor cannot read most existing GUI layouts.** You will need to recreate your GUI layouts from scratch using the GUI editor. This is a known limitation of the current version.
+
+### Equipment Management
+The tool manages equipment slots through two integrated systems:
+
+1. **GUI Layout Editor**:
+   - Visually assign equipment slots to classes
+   - Drag and drop boxes to create the layout
+   - Each box can have multiple slots (2x1=2 slots, 4x1=4 slots, 4x2=8 slots)
+   - Slots can be assigned to different classes using the dropdown menu
+
+2. **Units Editor**:
+   - Displays and manages class definitions
+   - The `numSlots` value for each class is automatically managed by the GUI editor
+   - Manual edits to `numSlots` in the units editor will be preserved until slots are reassigned in the GUI
+
+### Equipment Slot Rules
+- Each class's `numSlots` value determines how many equipment slots are available
+- The GUI editor automatically updates these values based on slot assignments
+- If you need to change how many slots a class has:
+  1. Use the GUI editor to assign/unassign slots to the class
+  2. The `numSlots` value will update automatically
+  3. Changes are saved to the unit XML file
+
+## Support
+
+If you encounter any issues or have suggestions, please:
+1. Check the known issues section
+2. Submit a detailed bug report if needed
+3. Include any error messages and steps to reproduce the issue
+
+## License
+
+[Insert License Information] 

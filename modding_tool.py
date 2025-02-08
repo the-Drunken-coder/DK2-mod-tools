@@ -268,23 +268,43 @@ DEFAULT_DK2_PATH = r"C:\Program Files (x86)\Steam\steamapps\common\DoorKickers2"
 def initialize_config():
     """Initialize configuration file if it doesn't exist"""
     try:
-        print(f"Initializing config from: {CONFIG_FILE}")  # Temporary print for debugging
+        print(f"Initializing config from: {CONFIG_FILE}")
+        logger.info("Starting configuration initialization")
         
         if os.path.exists(CONFIG_FILE):
             logger.info("Loading existing config file...")
             try:
                 with open(CONFIG_FILE, 'r') as f:
                     config = json.load(f)
-                    # Normalize paths in the loaded config
+                    # Validate paths in the loaded config
                     if config.get("mod_path"):
                         config["mod_path"] = os.path.normpath(config["mod_path"])
-                        logger.info(f"Normalized mod_path: {config['mod_path']}")
+                        if not os.path.exists(config["mod_path"]):
+                            logger.warning(f"Configured mod path does not exist: {config['mod_path']}")
+                            messagebox.showwarning(
+                                "Missing Mod Directory",
+                                f"The configured mods directory was not found:\n{config['mod_path']}\n\n"
+                                "Please select the correct mods directory in the Configuration tab."
+                            )
+                            config["mod_path"] = ""
+                        else:
+                            logger.info(f"Verified mod_path: {config['mod_path']}")
+                            
                     if config.get("game_path"):
                         config["game_path"] = os.path.normpath(config["game_path"])
-                        logger.info(f"Normalized game_path: {config['game_path']}")
+                        if not os.path.exists(config["game_path"]):
+                            logger.warning(f"Configured game path does not exist: {config['game_path']}")
+                            messagebox.showwarning(
+                                "Missing Game Directory",
+                                f"The configured Door Kickers 2 directory was not found:\n{config['game_path']}\n\n"
+                                "Please select the correct game directory in the Configuration tab."
+                            )
+                            config["game_path"] = ""
+                        else:
+                            logger.info(f"Verified game_path: {config['game_path']}")
                     return config
             except Exception as e:
-                print(f"Failed to read config file: {str(e)}")
+                logger.error(f"Failed to read config file: {str(e)}")
                 raise
                 
         logger.info("No config file found, creating new one...")
@@ -294,7 +314,33 @@ def initialize_config():
             "last_used_mod": ""
         }
         
-        # Try to auto-detect DK2 installation
+        # List of possible Steam installation drives
+        steam_paths = []
+        
+        # Add all possible drive letters
+        import string
+        for drive in string.ascii_uppercase:
+            drive_path = f"{drive}:\\"
+            if os.path.exists(drive_path):
+                # Common Steam installation paths for each drive
+                steam_paths.extend([
+                    os.path.join(drive_path, "Program Files (x86)", "Steam"),
+                    os.path.join(drive_path, "Program Files", "Steam"),
+                    os.path.join(drive_path, "Steam"),
+                    os.path.join(drive_path, "Games", "Steam")
+                ])
+        
+        # Add user-specific paths
+        steam_paths.extend([
+            os.path.expanduser("~/Steam"),
+            os.path.expanduser("~/Games/Steam"),
+            os.path.expanduser("~/SteamLibrary")
+        ])
+        
+        logger.info("Searching for DK2 installation...")
+        found = False
+        
+        # First check default location
         if os.path.exists(DEFAULT_DK2_PATH):
             logger.info("Found DK2 installation at default path")
             config["game_path"] = os.path.normpath(DEFAULT_DK2_PATH)
@@ -302,47 +348,82 @@ def initialize_config():
             if os.path.exists(mods_path):
                 logger.info("Found mods directory")
                 config["mod_path"] = os.path.normpath(mods_path)
+                found = True
+            else:
+                logger.warning(f"Mods directory not found at: {mods_path}")
+                messagebox.showwarning(
+                    "Missing Mods Directory",
+                    f"The mods directory was not found at:\n{mods_path}\n\n"
+                    "Please create a 'mods' folder in your Door Kickers 2 directory."
+                )
         
-        # Try other common Steam locations if default not found
-        if not config["game_path"]:
-            steam_paths = [
-                r"C:\Program Files\Steam",
-                r"D:\Steam",
-                r"E:\Steam",
-                os.path.expanduser("~/Steam"),
-                os.path.expanduser("~/Games/Steam")
-            ]
-            
+        # If not found in default location, search other locations
+        if not found:
+            logger.info("DK2 not found in default location, searching other paths...")
             for steam_path in steam_paths:
-                dk2_path = os.path.join(steam_path, "steamapps", "common", "DoorKickers2")
-                if os.path.exists(dk2_path):
-                    logger.info(f"Found DK2 installation at: {dk2_path}")
-                    config["game_path"] = os.path.normpath(dk2_path)
-                    mods_path = os.path.join(dk2_path, "mods")
-                    if os.path.exists(mods_path):
-                        logger.info("Found mods directory")
-                        config["mod_path"] = os.path.normpath(mods_path)
+                # Check both standard and library paths
+                possible_paths = [
+                    os.path.join(steam_path, "steamapps", "common", "DoorKickers2"),
+                    os.path.join(steam_path, "SteamApps", "common", "DoorKickers2")
+                ]
+                
+                for dk2_path in possible_paths:
+                    if os.path.exists(dk2_path):
+                        logger.info(f"Found DK2 installation at: {dk2_path}")
+                        config["game_path"] = os.path.normpath(dk2_path)
+                        mods_path = os.path.join(dk2_path, "mods")
+                        if os.path.exists(mods_path):
+                            logger.info("Found mods directory")
+                            config["mod_path"] = os.path.normpath(mods_path)
+                            found = True
+                        else:
+                            logger.warning(f"Mods directory not found at: {mods_path}")
+                            messagebox.showwarning(
+                                "Missing Mods Directory",
+                                f"The mods directory was not found at:\n{mods_path}\n\n"
+                                "Please create a 'mods' folder in your Door Kickers 2 directory."
+                            )
+                        break
+                
+                if found:
                     break
         
-        # Save the config
-        print(f"Attempting to save config to: {CONFIG_FILE}")  # Debug print
+        if not found:
+            logger.warning("Could not automatically detect DK2 installation")
+            messagebox.showwarning(
+                "Game Not Found",
+                "Door Kickers 2 installation could not be automatically detected.\n\n"
+                "Please use the Configuration tab to manually set your game directory."
+            )
+        
+        # Save the config - only create the directory for the config file itself
+        logger.info("Saving configuration file...")
         try:
-            # First verify parent directory exists and is writable
-            os.makedirs(os.path.dirname(CONFIG_FILE), exist_ok=True)
+            config_dir = os.path.dirname(CONFIG_FILE)
+            if not os.path.exists(config_dir):
+                logger.warning(f"Config directory does not exist: {config_dir}")
+                messagebox.showerror(
+                    "Configuration Error",
+                    f"Cannot save configuration. Directory does not exist:\n{config_dir}\n\n"
+                    "Please run the tool from a directory where you have write permissions."
+                )
+                return config
             
             # Try to write config
             with open(CONFIG_FILE, 'w') as f:
                 json.dump(config, f, indent=4)
-            print("Successfully saved config file")
-            logger.info("Created new config file")
+            logger.info("Successfully saved config file")
         except Exception as e:
-            print(f"Failed to save config file: {str(e)}")
-            raise
+            logger.error(f"Failed to save config file: {str(e)}")
+            messagebox.showerror(
+                "Configuration Error",
+                f"Failed to save configuration file:\n{str(e)}\n\n"
+                "Please ensure you have write permissions in the tool's directory."
+            )
             
         return config
     except Exception as e:
-        print(f"Error in initialize_config: {str(e)}")
-        logger.error(f"Error initializing config: {e}", exc_info=True)
+        logger.error(f"Error in initialize_config: {e}", exc_info=True)
         # Return a default config as fallback
         return {
             "mod_path": "",
@@ -535,13 +616,26 @@ def load_plugins(notebook, force_reload=False):
     # Keep track of loaded modules and their widgets
     loaded_modules = {}
     
-    # First, remove any existing tabs except configuration
+    # First, remove any existing tabs
     for tab_id in notebook.tabs():
-        tab_text = notebook.tab(tab_id, "text")
-        if tab_text != config_editor_module.PLUGIN_TITLE:
-            notebook.forget(tab_id)
+        notebook.forget(tab_id)
     
-    # Load all non-config modules first
+    # Load config module first
+    try:
+        if force_reload and "config_editor_module" in sys.modules:
+            importlib.reload(sys.modules["config_editor_module"])
+        
+        # Add config tab first
+        title, widget = config_editor_module.get_plugin_tab(notebook)
+        notebook.add(widget, text=title)
+        loaded_modules["config_editor_module"] = widget
+        
+    except Exception as e:
+        print(f"Failed to load configuration module: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    # Then load all non-config modules
     for filename in os.listdir(plugins_dir):
         if filename.endswith("_module.py") and filename != "config_editor_module.py":
             try:
@@ -564,33 +658,10 @@ def load_plugins(notebook, force_reload=False):
                 print(f"Failed to load plugin {filename}: {e}")
                 import traceback
                 traceback.print_exc()
-    
-    # Load or reload config module last
-    try:
-        if force_reload and "config_editor_module" in sys.modules:
-            importlib.reload(sys.modules["config_editor_module"])
-        
-        # Remove existing config tab if it exists
-        for tab_id in notebook.tabs():
-            tab_text = notebook.tab(tab_id, "text")
-            if tab_text == config_editor_module.PLUGIN_TITLE:
-                notebook.forget(tab_id)
-                break
-        
-        # Add new config tab
-        title, widget = config_editor_module.get_plugin_tab(notebook)
-        notebook.add(widget, text=title)
-        loaded_modules["config_editor_module"] = widget
-        
-        # Move config tab to the end
-        tabs = list(notebook.tabs())
-        if len(tabs) > 1:
-            notebook.insert(tabs[-1], tabs[0])
-            
-    except Exception as e:
-        print(f"Failed to load configuration module: {e}")
-        import traceback
-        traceback.print_exc()
+                
+    # Select the configuration tab
+    if notebook.tabs():
+        notebook.select(0)
                 
     return loaded_modules
 

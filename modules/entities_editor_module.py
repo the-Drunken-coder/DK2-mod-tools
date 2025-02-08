@@ -27,6 +27,7 @@ class EntitiesEditor(tk.Frame):
         self.brain_attr_entries = {}
         self.move_speed_entries = {}
         self.turn_speed_entries = {}
+        self.physical_params_entries = {}
         self.equipment_entry = None
 
         self.build_ui()
@@ -113,6 +114,15 @@ class EntitiesEditor(tk.Frame):
             entry.grid(row=i, column=1, sticky="w", padx=5, pady=2)
             self.entity_attr_entries[field] = entry
 
+        # Add Physical Params frame
+        physical_frame = ttk.LabelFrame(self, text="Physical Parameters")
+        physical_frame.pack(fill="x", padx=5, pady=5)
+        ttk.Label(physical_frame, text="Health:").grid(row=0, column=0, sticky="w", padx=5, pady=2)
+        health_entry = ttk.Entry(physical_frame, width=10)
+        health_entry.grid(row=0, column=1, sticky="w", padx=5, pady=2)
+        health_entry.insert(0, "100")  # Default value
+        self.physical_params_entries["health"] = health_entry
+
         human_frame = ttk.LabelFrame(self, text="Human Attributes")
         human_frame.pack(fill="x", padx=5, pady=5)
         for i, field in enumerate(["type", "unit", "class"]):
@@ -179,6 +189,13 @@ class EntitiesEditor(tk.Frame):
         for field, entry in self.entity_attr_entries.items():
             entry.delete(0, tk.END)
             entry.insert(0, entity.get(field, ""))
+        
+        # Load Physical Params
+        physical_params = entity.find('PhysicalParams')
+        if physical_params is not None:
+            health_entry = self.physical_params_entries["health"]
+            health_entry.delete(0, tk.END)
+            health_entry.insert(0, physical_params.get("health", "100"))
         
         human_elem = entity.find('Human')
         if human_elem is not None:
@@ -255,8 +272,21 @@ class EntitiesEditor(tk.Frame):
     def save_changes(self):
         if self.current_entity is None:
             return
+            
+        # Get the XML path
+        xml_path = self.get_xml_path()
+        if not xml_path:
+            messagebox.showerror("Error", "No mod path configured")
+            return
+            
         for field, entry in self.entity_attr_entries.items():
             self.current_entity.set(field, entry.get())
+        
+        # Save Physical Params
+        physical_params = self.current_entity.find('PhysicalParams')
+        if physical_params is None:
+            physical_params = ET.SubElement(self.current_entity, 'PhysicalParams')
+        physical_params.set("health", self.physical_params_entries["health"].get())
         
         human_elem = self.current_entity.find('Human')
         if human_elem is None:
