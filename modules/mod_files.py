@@ -44,35 +44,41 @@ class ModFiles:
         unit_dir = os.path.join(self.mod_path, "units")
         if os.path.exists(unit_dir):
             for file in os.listdir(unit_dir):
-                # Accept both _unit.xml and _units.xml
-                if file.endswith("_unit.xml") or file.endswith("_units.xml"):
+                # Accept files that:
+                # 1. End with _unit.xml or _units.xml
+                # 2. Are exactly unit.xml or units.xml
+                # 3. End with _unit or _units (fallback)
+                if (file.endswith("_unit.xml") or file.endswith("_units.xml") or 
+                    file in ["unit.xml", "units.xml"] or 
+                    file.endswith("_unit") or file.endswith("_units")):
                     full_path = os.path.normpath(os.path.join(unit_dir, file))
-                    unit_files.append((full_path, os.path.getsize(full_path)))
+                    try:
+                        # Try to parse the file to verify it's valid XML
+                        ET.parse(full_path)
+                        unit_files.append((full_path, os.path.getsize(full_path)))
+                        log(f"Found valid unit file: {file}")
+                    except ET.ParseError as e:
+                        log(f"Warning: Failed to parse {file}: {str(e)}")
+                        continue
         if unit_files:
             # Use the largest unit file
             unit_files.sort(key=lambda x: x[1], reverse=True)
             self.files["unit"] = unit_files[0][0]
             log(f"Found unit file: {os.path.basename(self.files['unit'])}")
         else:
-            # Try both unit.xml and units.xml as defaults
-            default_unit = os.path.join(unit_dir, "unit.xml")
-            default_units = os.path.join(unit_dir, "units.xml")
-            if os.path.exists(default_units):
-                self.files["unit"] = default_units
-                log("Using default units file: units.xml")
-            elif os.path.exists(default_unit):
-                self.files["unit"] = default_unit
-                log("Using default unit file: unit.xml")
-            else:
-                self.files["unit"] = None
-                log("No unit file found")
+            self.files["unit"] = None
+            log("No unit file found")
 
         # Find equipment binds file
         equipment_files = []
         equipment_dir = os.path.join(self.mod_path, "equipment")
         if os.path.exists(equipment_dir):
             for file in os.listdir(equipment_dir):
-                if file.endswith("_binds.xml") or file == "binds.xml":
+                # Check for files that:
+                # 1. End with _binds.xml
+                # 2. Are exactly binds.xml
+                # 3. End with _binds (fallback)
+                if file.endswith("_binds.xml") or file == "binds.xml" or file.endswith("_binds"):
                     full_path = os.path.normpath(os.path.join(equipment_dir, file))
                     try:
                         # Try to parse the file to verify it's valid XML
@@ -96,9 +102,22 @@ class ModFiles:
         entities_dir = os.path.join(self.mod_path, "entities")
         if os.path.exists(entities_dir):
             for file in os.listdir(entities_dir):
-                if file.lower().endswith('.xml') and 'human' in file.lower():
+                # Check for files that:
+                # 1. End with .xml and contain 'human'
+                # 2. End with _human.xml or _humans.xml
+                # 3. End with _human or _humans (fallback)
+                if ((file.lower().endswith('.xml') and 'human' in file.lower()) or
+                    file.endswith("_human.xml") or file.endswith("_humans.xml") or
+                    file.endswith("_human") or file.endswith("_humans")):
                     full_path = os.path.normpath(os.path.join(entities_dir, file))
-                    entities_files.append((full_path, os.path.getsize(full_path)))
+                    try:
+                        # Try to parse the file to verify it's valid XML
+                        ET.parse(full_path)
+                        entities_files.append((full_path, os.path.getsize(full_path)))
+                        log(f"Found valid entities file: {file}")
+                    except ET.ParseError as e:
+                        log(f"Warning: Failed to parse {file}: {str(e)}")
+                        continue
         if entities_files:
             # Use the largest humans file
             entities_files.sort(key=lambda x: x[1], reverse=True)
@@ -113,22 +132,28 @@ class ModFiles:
         gui_dir = os.path.join(self.mod_path, "gui")
         if os.path.exists(gui_dir):
             for file in os.listdir(gui_dir):
-                if file.endswith("_deploy.xml"):
+                # Check for files that:
+                # 1. End with _deploy.xml
+                # 2. Are exactly deploy.xml
+                # 3. End with _deploy (fallback)
+                if file.endswith("_deploy.xml") or file == "deploy.xml" or file.endswith("_deploy"):
                     full_path = os.path.normpath(os.path.join(gui_dir, file))
-                    gui_files.append((full_path, os.path.getsize(full_path)))
+                    try:
+                        # Try to parse the file to verify it's valid XML
+                        ET.parse(full_path)
+                        gui_files.append((full_path, os.path.getsize(full_path)))
+                        log(f"Found valid GUI file: {file}")
+                    except ET.ParseError as e:
+                        log(f"Warning: Failed to parse {file}: {str(e)}")
+                        continue
         if gui_files:
             # Use the largest deploy file
             gui_files.sort(key=lambda x: x[1], reverse=True)
             self.files["gui"] = gui_files[0][0]
             log(f"Found GUI file: {os.path.basename(self.files['gui'])}")
         else:
-            default_deploy = os.path.join(gui_dir, "deploy.xml")
-            if os.path.exists(default_deploy):
-                self.files["gui"] = default_deploy
-                log("Using default GUI file: deploy.xml")
-            else:
-                self.files["gui"] = None
-                log("No GUI file found")
+            self.files["gui"] = None
+            log("No GUI file found")
 
     def get_file(self, file_type):
         """Get the path to a specific file type"""

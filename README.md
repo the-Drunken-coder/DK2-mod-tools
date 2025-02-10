@@ -48,7 +48,7 @@ If your mod isn't listed, verify that:
 2. Write permissions to your Documents folder
 
 ### Installation Steps
-1. Download the latest installer (`DK2ModdingTool_Setup.exe`) from the [Releases](https://github.com/yourusername/dk2-modding-tool/releases) page
+1. Download the latest installer (`DK2ModdingTool_Setup.exe`) from the [Releases](https://github.com/the-Drunken-coder/Door-Kickers-Mod-helper/releases) page
 2. Run the installer
 3. Choose your installation directory (defaults to Documents folder)
 4. Follow the installation wizard
@@ -160,9 +160,16 @@ dk2-modding-tool/
 4. Push to the branch
 5. Create a Pull Request
 
+## Support
+
+If you encounter any issues or have suggestions:
+1. Check the [Known Issues](https://github.com/the-Drunken-coder/Door-Kickers-Mod-helper/issues) section
+2. [Submit a Bug Report](https://github.com/the-Drunken-coder/Door-Kickers-Mod-helper/issues/new?template=bug_report.md)
+3. [Request a Feature](https://github.com/the-Drunken-coder/Door-Kickers-Mod-helper/issues/new?template=feature_request.md)
+
 ## License
 
-MIT License - See LICENSE file for details
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ### Mod Structure
 Any folder in your DK2 mods directory will be treated as a mod. The following structure shows the standard mod layout and file naming conventions:
@@ -217,15 +224,4 @@ The tool manages equipment slots through two integrated systems:
 - If you need to change how many slots a class has:
   1. Use the GUI editor to assign/unassign slots to the class
   2. The `numSlots` value will update automatically
-  3. Changes are saved to the unit XML file
-
-## Support
-
-If you encounter any issues or have suggestions, please:
-1. Check the known issues section
-2. Submit a detailed bug report if needed
-3. Include any error messages and steps to reproduce the issue
-
-## License
-
-[Insert License Information] 
+  3. Changes are saved to the unit XML file 
