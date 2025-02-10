@@ -48,7 +48,7 @@ If your mod isn't listed, verify that:
 2. Write permissions to your Documents folder
 
 ### Installation Steps
-1. Download the latest installer (`DK2ModdingTool_Setup.exe`) from the [Releases](https://github.com/the-Drunken-coder/Door-Kickers-Mod-helper/releases) page
+1. Download the latest installer (`DK2ModdingTool_Setup.exe`) from the [Releases](https://github.com/the-Drunken-coder/DK2-mod-tools/releases) page
 2. Run the installer
 3. Choose your installation directory (defaults to Documents folder)
 4. Follow the installation wizard
@@ -163,9 +163,9 @@ dk2-modding-tool/
 ## Support
 
 If you encounter any issues or have suggestions:
-1. Check the [Known Issues](https://github.com/the-Drunken-coder/Door-Kickers-Mod-helper/issues) section
-2. [Submit a Bug Report](https://github.com/the-Drunken-coder/Door-Kickers-Mod-helper/issues/new?template=bug_report.md)
-3. [Request a Feature](https://github.com/the-Drunken-coder/Door-Kickers-Mod-helper/issues/new?template=feature_request.md)
+1. Check the [Known Issues](https://github.com/the-Drunken-coder/DK2-mod-tools/issues) section
+2. [Submit a Bug Report](https://github.com/the-Drunken-coder/DK2-mod-tools/issues/new?template=bug_report.md)
+3. [Request a Feature](https://github.com/the-Drunken-coder/DK2-mod-tools/issues/new?template=feature_request.md)
 
 ## License
 
