@@ -2,15 +2,27 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import xml.etree.ElementTree as ET
 import os
+import json
 from utils import load_xml as util_load_xml
 from modules import config_editor_module
 
 PLUGIN_TITLE = "Units Editor"
-ENABLE_LOGGING = False  # Toggle module logging
+
+def is_logging_enabled():
+    """Check if logging is enabled for this module"""
+    try:
+        config_path = os.path.join(os.path.dirname(__file__), 'logging_config.json')
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+                return config.get("units_editor", False)
+    except Exception:
+        pass
+    return False
 
 def log(message):
     """Module specific logging function"""
-    if ENABLE_LOGGING:
+    if is_logging_enabled():
         print(f"[UnitsEditor] {message}")
 
 class UnitsEditor(tk.Frame):

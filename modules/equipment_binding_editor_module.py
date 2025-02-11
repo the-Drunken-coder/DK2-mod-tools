@@ -2,16 +2,28 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import xml.etree.ElementTree as ET
 import os
+import json
 from pathlib import Path
 from modules import config_editor_module
 from modding_tool import get_equipment_file, get_unit_file, mod_files
 
 PLUGIN_TITLE = "Equipment & Bindings"
-ENABLE_LOGGING = True  # Toggle module logging
+
+def is_logging_enabled():
+    """Check if logging is enabled for this module"""
+    try:
+        config_path = os.path.join(os.path.dirname(__file__), 'logging_config.json')
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+                return config.get("equipment_binding_editor", False)
+    except Exception:
+        pass
+    return False
 
 def log(message):
     """Module specific logging function"""
-    if ENABLE_LOGGING:
+    if is_logging_enabled():
         print(f"[EquipmentBindingEditor] {message}")
 
 class EquipmentBindingEditor(tk.Frame):

@@ -1,29 +1,42 @@
 import os
 import xml.etree.ElementTree as ET
-import logging
+import json
 
-logger = logging.getLogger(__name__)
+def is_logging_enabled():
+    """Check if logging is enabled for this module"""
+    try:
+        config_path = os.path.join(os.path.dirname(__file__), 'logging_config.json')
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+                return config.get("mod_files", False)
+    except Exception:
+        pass
+    return False
 
 def log(message):
     """Module specific logging function"""
-    logger.debug(f"[ModFiles] {message}")
+    if is_logging_enabled():
+        print(f"[ModFiles] {message}")
 
 class ModFiles:
     """Centralized file management for the current mod"""
     def __init__(self, mod_path=None):
-        logger.info(f"Initializing ModFiles with path: {mod_path}")
+        log(f"Initializing ModFiles with path: {mod_path}")
         self.mod_path = os.path.normpath(mod_path) if mod_path else None
         self.files = {
             "unit": None,
             "equipment": None,
             "entities": None,
             "gui": None,
-            "mod": None
+            "mod": None,
+            "doctrine_nodes": None,  # New: doctrine nodes file
+            "doctrine": None         # New: doctrine file
         }
         if mod_path and os.path.exists(os.path.join(mod_path, "mod.xml")):
             self.scan_mod_directory()
         else:
-            logger.warning("No valid mod path provided during initialization")
+            log("No valid mod path provided during initialization")
 
     def scan_mod_directory(self):
         """Scan the mod directory to find all relevant files"""
@@ -68,6 +81,49 @@ class ModFiles:
         else:
             self.files["unit"] = None
             log("No unit file found")
+
+        # Find doctrine nodes file
+        doctrine_nodes_files = []
+        if os.path.exists(unit_dir):
+            for file in os.listdir(unit_dir):
+                if file.endswith("_doctrine_nodes.xml") or file.endswith("_doctrine_nodes"):
+                    full_path = os.path.normpath(os.path.join(unit_dir, file))
+                    try:
+                        ET.parse(full_path)
+                        doctrine_nodes_files.append((full_path, os.path.getsize(full_path)))
+                        log(f"Found valid doctrine nodes file: {file}")
+                    except ET.ParseError as e:
+                        log(f"Warning: Failed to parse {file}: {str(e)}")
+                        continue
+        if doctrine_nodes_files:
+            doctrine_nodes_files.sort(key=lambda x: x[1], reverse=True)
+            self.files["doctrine_nodes"] = doctrine_nodes_files[0][0]
+            log(f"Found doctrine nodes file: {os.path.basename(self.files['doctrine_nodes'])}")
+        else:
+            self.files["doctrine_nodes"] = None
+            log("No doctrine nodes file found")
+
+        # Find doctrine file
+        doctrine_files = []
+        localization_dir = os.path.join(self.mod_path, "localization")
+        if os.path.exists(localization_dir):
+            for file in os.listdir(localization_dir):
+                if file.endswith("_doctrine.xml") or file.endswith("_doctrines.xml") or file.endswith("_doctrine") or file.endswith("_doctrines"):
+                    full_path = os.path.normpath(os.path.join(localization_dir, file))
+                    try:
+                        ET.parse(full_path)
+                        doctrine_files.append((full_path, os.path.getsize(full_path)))
+                        log(f"Found valid doctrine file: {file}")
+                    except ET.ParseError as e:
+                        log(f"Warning: Failed to parse {file}: {str(e)}")
+                        continue
+        if doctrine_files:
+            doctrine_files.sort(key=lambda x: x[1], reverse=True)
+            self.files["doctrine"] = doctrine_files[0][0]
+            log(f"Found doctrine file: {os.path.basename(self.files['doctrine'])}")
+        else:
+            self.files["doctrine"] = None
+            log("No doctrine file found")
 
         # Find equipment binds file
         equipment_files = []
@@ -237,6 +293,58 @@ class ModFiles:
     def get_gui_file(self):
         """Get the GUI file path"""
         return self.get_file("gui")
+
+    def get_doctrine_nodes_file(self):
+        """Get the doctrine nodes file path"""
+        return self.get_file("doctrine_nodes")
+
+    def get_doctrine_file(self):
+        """Get the doctrine file path"""
+        return self.get_file("doctrine")
+
+    def create_doctrine_nodes_file(self):
+        """Create a new doctrine nodes file with basic structure"""
+        if not self.mod_path:
+            return False, "No mod path configured"
+
+        unit_dir = os.path.join(self.mod_path, "units")
+        if not os.path.exists(unit_dir):
+            os.makedirs(unit_dir)
+
+        file_path = os.path.join(unit_dir, "doctrine_nodes.xml")
+        if os.path.exists(file_path):
+            return False, "File already exists"
+
+        try:
+            root = ET.Element("DoctrineNodes")
+            tree = ET.ElementTree(root)
+            tree.write(file_path, encoding="utf-8", xml_declaration=True)
+            self.files["doctrine_nodes"] = file_path
+            return True, "Created doctrine nodes file successfully"
+        except Exception as e:
+            return False, f"Failed to create file: {str(e)}"
+
+    def create_doctrine_file(self):
+        """Create a new doctrine file with basic structure"""
+        if not self.mod_path:
+            return False, "No mod path configured"
+
+        loc_dir = os.path.join(self.mod_path, "localization")
+        if not os.path.exists(loc_dir):
+            os.makedirs(loc_dir)
+
+        file_path = os.path.join(loc_dir, "doctrine.xml")
+        if os.path.exists(file_path):
+            return False, "File already exists"
+
+        try:
+            root = ET.Element("Strings")
+            tree = ET.ElementTree(root)
+            tree.write(file_path, encoding="utf-8", xml_declaration=True)
+            self.files["doctrine"] = file_path
+            return True, "Created doctrine file successfully"
+        except Exception as e:
+            return False, f"Failed to create file: {str(e)}"
 
 # Global instance for file management
 mod_files = ModFiles() 

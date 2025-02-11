@@ -3,11 +3,29 @@ from tkinter import ttk, messagebox
 import xml.etree.ElementTree as ET
 import os
 import shutil
+import json
 # Use relative imports when inside a package
 from . import config_editor_module, mod_files
 from modding_tool import get_gui_file
 
 PLUGIN_TITLE = "GUI Editor"
+
+def is_logging_enabled():
+    """Check if logging is enabled for this module"""
+    try:
+        config_path = os.path.join(os.path.dirname(__file__), 'logging_config.json')
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as f:
+                config = json.load(f)
+                return config.get("gui_editor", False)
+    except Exception:
+        pass
+    return False
+
+def log(message):
+    """Module specific logging function"""
+    if is_logging_enabled():
+        print(f"[GUIEditor] {message}")
 
 def get_plugin_tab(notebook):
     """Create and return the GUI editor tab"""
@@ -288,6 +306,12 @@ class GUIEditor(tk.Frame):
         self.available_classes = []  # Store available classes from XML
         self.config = config_editor_module.load_config()
         self.mod_files = mod_files.ModFiles(self.get_mod_path())  # Initialize ModFiles
+        self.tree = None
+        self.unit_elem = None
+        self.unit_attr_entries = {}
+        self.class_entries = []
+        self.trooper_rank_entries = []
+        self.rank_entries = []
         self.load_available_classes()  # Load classes when initializing
         self.build_ui()
     
@@ -309,14 +333,14 @@ class GUIEditor(tk.Frame):
     
     def load_available_classes(self):
         """Load available classes from the unit file"""
-        print("[GUIEditor] Loading available classes...")
+        log("Loading available classes...")
         # Get classes from the centralized mod_files
         classes = self.mod_files.get_available_classes()
         # Add "unused" as a special class if not already present
         if "unused" not in classes:
             classes.append("unused")
         self.available_classes = classes
-        print(f"[GUIEditor] Available classes: {', '.join(self.available_classes)}")
+        log(f"Available classes: {', '.join(self.available_classes)}")
 
     def build_ui(self):
         # Main container
