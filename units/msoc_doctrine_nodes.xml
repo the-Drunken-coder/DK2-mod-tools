@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<DoctrineNodes>
+    <Node name="test 2" nameUI="@test 2_name" description="@test 2_desc" texturePrefix="data/textures/gui/doctrines/doctrine_empty">
+        <EquipmentModifier target="rifle" readyTime="-50" accuracyAdd="+10"/>
+    </Node>
+    <Node name="test" nameUI="@test_name" description="@test_desc" texturePrefix="data/textures/gui/doctrines/doctrine_empty">
+        <EquipmentModifier target="rifle" readyTime="-50" accuracyAdd="+10"/>
+    </Node>
+</DoctrineNodes> 

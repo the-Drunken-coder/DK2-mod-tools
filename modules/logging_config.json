@@ -4,7 +4,7 @@
     "entities_editor": false,
     "gui_editor": false,
     "localization_editor": false,
-    "mod_files": false,
+    "mod_files": true,
     "mod_metadata_editor": false,
     "units_editor": false,
     "config_editor": false

@@ -89,8 +89,8 @@ class DraggableFrame(tk.Frame):
     def get_visual_position(self):
         """Convert XML position to visual position"""
         if self.width_cells == 2:  # 2x1 box
-            # Start in left position by default
-            return 0, max(0, self.row_index * self.row_height)  # Ensure Y is never negative
+            # Start in middle position by default
+            return 98, max(0, self.row_index * self.row_height)  # Ensure Y is never negative
         else:  # 4x1 or 4x2
             return 2, max(0, self.row_index * self.row_height)  # Ensure Y is never negative
 
@@ -669,13 +669,13 @@ Row Index: {frame.row_index}"""
             
             # Find the main container using the mod name
             mod_name = self.get_mod_name().upper()
+            log(f"Searching for container with name: {mod_name}")
             container = root.find(f".//Item[@name='{mod_name}']")
-            print(f"Looking for container with name: {mod_name}")
             
             # If not found with mod name, try FACTION as fallback
             if container is None:
+                log("Mod name container not found, trying FACTION container")
                 container = root.find(".//Item[@name='FACTION']")
-                print("Mod name container not found, trying FACTION container")
             
             if container is None:
                 messagebox.showinfo("Info", "No existing layout found. Start by adding equipment boxes.")

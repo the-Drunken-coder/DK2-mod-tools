@@ -108,15 +108,10 @@ class ModFiles:
         localization_dir = os.path.join(self.mod_path, "localization")
         if os.path.exists(localization_dir):
             for file in os.listdir(localization_dir):
-                if file.endswith("_doctrine.xml") or file.endswith("_doctrines.xml") or file.endswith("_doctrine") or file.endswith("_doctrines"):
+                if file.endswith("_doctrine.txt") or file.endswith("_doctrines.txt"):
                     full_path = os.path.normpath(os.path.join(localization_dir, file))
-                    try:
-                        ET.parse(full_path)
-                        doctrine_files.append((full_path, os.path.getsize(full_path)))
-                        log(f"Found valid doctrine file: {file}")
-                    except ET.ParseError as e:
-                        log(f"Warning: Failed to parse {file}: {str(e)}")
-                        continue
+                    doctrine_files.append((full_path, os.path.getsize(full_path)))
+                    log(f"Found valid doctrine file: {file}")
         if doctrine_files:
             doctrine_files.sort(key=lambda x: x[1], reverse=True)
             self.files["doctrine"] = doctrine_files[0][0]

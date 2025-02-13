@@ -1,0 +1,8 @@
+                </StaticImage>
+                <StaticImage origin="0 0" align="rt">
+                    <RenderObject2D texture="data/textures/gui/deploy/deploy_class_diagonalbars.dds" flipX="true" sizeX="190" sizeY="75" color="0c0b0b33" />
+                </StaticImage>
+            </StaticImage>
+            <Item name="test" origin="349 -95" align="lt" />
+        </Item>
+        <Item name="support" align="lt" sizeX="350" sizeY="780" origin="920 -70"> 
