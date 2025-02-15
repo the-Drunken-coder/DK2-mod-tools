@@ -166,7 +166,101 @@ def create_mod_template(mod_path, mod_name, author="", description=""):
         if os.path.exists(full_mod_path):
             return False, f"The mod directory '{safe_mod_name}' already exists. Please choose a different name or delete the existing directory first."
 
-        return False, "Please create the mod directory and files manually before using the tool."
+        # Create main mod directory
+        os.makedirs(full_mod_path)
+
+        # Create subdirectories
+        for dir_name in MOD_STRUCTURE["optional_dirs"].keys():
+            os.makedirs(os.path.join(full_mod_path, dir_name))
+
+        # Create mod.xml
+        mod_xml_content = f"""<?xml version="1.0" encoding="utf-8"?>
+<mod>
+    <name>{mod_name}</name>
+    <author>{author}</author>
+    <description>{description}</description>
+    <version>1.0</version>
+    <game_version>1.0</game_version>
+</mod>"""
+        
+        with open(os.path.join(full_mod_path, "mod.xml"), 'w', encoding='utf-8') as f:
+            f.write(mod_xml_content)
+
+        # Create template files for each directory
+        templates = {
+            "units": {
+                "mod_unit.xml": """<?xml version="1.0" encoding="utf-8"?>
+<Units>
+    <Unit name="MOD_UNIT" nameUI="Mod Unit" description="Description of your unit" flagTex="data/textures/mod_squad_bg.dds" flagColor="f0f0f0" rndNameEntry="@#squadname" voicepack="commander_eng" incapacitationChance="80" incapacitationChanceCrit="25">
+        <Classes>
+            <Class name="DefaultClass" nameUI="DEFAULT CLASS" description="Default class description" supply="100" iconTex="data/textures/gui/deploy/class_icon_undercover.dds" upgrades="BH_Defence1, BH_Offence1" maxUpgradeable="2" numSlots="4" />
+        </Classes>
+        <TrooperRanks>
+            <Rank name="@agent_rank_0" xpNeeded="0" badgeTex="data/textures/gui/customization/cia_rank_01.dds" />
+            <Rank name="@agent_rank_1" xpNeeded="700" badgeTex="data/textures/gui/customization/cia_rank_02.dds" />
+        </TrooperRanks>
+        <Ranks>
+            <Rank xpNeeded="0" badgeTex="" />
+            <Rank xpNeeded="4000" badgeTex="" />
+        </Ranks>
+    </Unit>
+</Units>""",
+                "mod_identities.xml": """<?xml version="1.0" encoding="utf-8"?>
+<identities>
+    <!-- Add your unit identities here -->
+</identities>"""
+            },
+            "equipment": {
+                "mod_equipment.xml": """<?xml version="1.0" encoding="utf-8"?>
+<equipment>
+    <!-- Add your equipment definitions here -->
+</equipment>""",
+                "mod_binds.xml": """<?xml version="1.0" encoding="utf-8"?>
+<binds>
+    <!-- Add your equipment bindings here -->
+</binds>"""
+            },
+            "entities": {
+                "mod_entities.xml": """<?xml version="1.0" encoding="utf-8"?>
+<entities>
+    <!-- Add your entity definitions here -->
+</entities>""",
+                "mod_humans.xml": """<?xml version="1.0" encoding="utf-8"?>
+<humans>
+    <!-- Add your human entity definitions here -->
+</humans>"""
+            },
+            "gui": {
+                "mod_gui.xml": """<?xml version="1.0" encoding="utf-8"?>
+<gui>
+    <!-- Add your GUI definitions here -->
+</gui>""",
+                "mod_deploy.xml": """<?xml version="1.0" encoding="utf-8"?>
+<deploy>
+    <!-- Add your deployment screen layouts here -->
+</deploy>"""
+            },
+            "localization": {
+                "mod_strings.xml": """<?xml version="1.0" encoding="utf-8"?>
+<strings>
+    <!-- Add your string translations here -->
+</strings>""",
+                "mod_squadname_pool.txt": """# Add your squad names here, one per line
+Squad Alpha
+Squad Bravo
+Squad Charlie"""
+            }
+        }
+
+        # Create all template files
+        for directory, files in templates.items():
+            dir_path = os.path.join(full_mod_path, directory)
+            for filename, content in files.items():
+                file_path = os.path.join(dir_path, filename)
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(content)
+
+        return True, f"Successfully created mod template: {safe_mod_name}"
 
     except Exception as e:
         return False, f"Error creating mod template: {str(e)}"

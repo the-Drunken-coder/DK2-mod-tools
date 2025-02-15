@@ -5,6 +5,7 @@
 import tkinter as tk
 from tkinter import ttk
 import xml.etree.ElementTree as ET
+import xml.dom.minidom
 import os
 import logging
 from dataclasses import dataclass
@@ -34,6 +35,146 @@ GRID_PADDING = 10
 XML_OFFSET_X = 80  # Default X offset for XML export
 XML_OFFSET_Y = 88  # Default Y offset for XML export
 
+# Available skills and their descriptions
+SKILLS = {
+    'SurvivalRate': 'Doubles chance to become incapacitated instead of dying',
+    'PistolTransition': 'Auto-switches to pistol when empty on main',
+    'SelfFirstAid': 'Heals at end of mission instead of next day',
+    'AdvancedLanguage': 'Enables order to send Civilians to nearest exit / out of the room',
+    'Backstabbing': 'Melee deals more stun / damage when hitting from behind',
+    'PriorityBombers': 'Prioritize suicide bombers and will have a 2x crit chance on them',
+    'SpeedyRifles': 'Increases move/turn speed when a rifle is equipped and is not firing',
+    'AdvanceIntel': 'Make visible objectives/hostages/bombs (value sets number per level)',
+    'HumintNetwork': 'Reveal enemies at mission start (value sets number per level)',
+    'Persuasion': 'New order: persuade civilians/surrendered to reveal nearby enemies',
+    'Ambush': 'Keeps shooting from stealth UNAWARE bonus for 100ms per-point',
+    'Concealment': 'Gives extra concealment equal to skill value',
+    'ConcealPistols': 'Reduces pistol concealment penalty by skill amount',
+    'BasicLanguage': 'Scares nearby civilians away (skill amount as scare radius)'
+}
+
+# Skills that require a value parameter
+SKILLS_WITH_VALUES = {
+    'AdvanceIntel',
+    'HumintNetwork',
+    'Persuasion',
+    'Ambush',
+    'Concealment',
+    'ConcealPistols',
+    'BasicLanguage'
+}
+
+# Equipment types and their modifiable attributes
+EQUIPMENT_TYPES = {
+    'rifle': {'name': 'Rifles', 'description': 'Standard combat rifles'},
+    'smg': {'name': 'Submachine Guns', 'description': 'Close quarters automatic weapons'},
+    'shotgun': {'name': 'Shotguns', 'description': 'Close range scatter weapons'},
+    'pistol': {'name': 'Handguns', 'description': 'Sidearms and backup weapons'},
+    'sniper': {'name': 'Sniper Rifles', 'description': 'Long range precision rifles'},
+    'lmg': {'name': 'Light Machine Guns', 'description': 'Support weapons for sustained fire'},
+    'launcher': {'name': 'Launchers', 'description': 'Grenade launchers and other explosive weapons'},
+    'armor': {'name': 'Body Armor', 'description': 'Protective gear for the torso'},
+    'helmet': {'name': 'Helmet', 'description': 'Head protection equipment'},
+    'melee': {'name': 'Melee Weapon', 'description': 'Close combat weapons'}
+}
+
+# Define which attributes are valid for each equipment type
+EQUIPMENT_TYPE_ATTRIBUTES = {
+    'rifle': ['readyTime', 'accuracyAdd', 'recoilAdd', 'damageAdd', 'penetrationAdd', 'suppressionAdd', 'reloadTimeAdd', 'weight', 'concealment'],
+    'smg': ['readyTime', 'accuracyAdd', 'recoilAdd', 'damageAdd', 'penetrationAdd', 'suppressionAdd', 'reloadTimeAdd', 'weight', 'concealment'],
+    'shotgun': ['readyTime', 'accuracyAdd', 'recoilAdd', 'damageAdd', 'penetrationAdd', 'suppressionAdd', 'reloadTimeAdd', 'weight', 'concealment'],
+    'pistol': ['readyTime', 'accuracyAdd', 'recoilAdd', 'damageAdd', 'penetrationAdd', 'reloadTimeAdd', 'weight', 'concealment'],
+    'sniper': ['readyTime', 'accuracyAdd', 'recoilAdd', 'damageAdd', 'penetrationAdd', 'suppressionAdd', 'reloadTimeAdd', 'weight', 'concealment'],
+    'lmg': ['readyTime', 'accuracyAdd', 'recoilAdd', 'damageAdd', 'penetrationAdd', 'suppressionAdd', 'reloadTimeAdd', 'weight', 'concealment'],
+    'launcher': ['readyTime', 'accuracyAdd', 'damageAdd', 'reloadTimeAdd', 'weight', 'concealment'],
+    'armor': ['protection', 'weight', 'concealment'],
+    'helmet': ['protection', 'weight', 'concealment'],
+    'melee': ['readyTime', 'damageAdd', 'weight']
+}
+
+EQUIPMENT_ATTRIBUTES = {
+    'readyTime': {
+        'name': 'Ready Time',
+        'description': 'Time to ready weapon after movement/actions',
+        'format': 'ms',
+        'example': '-50',
+        'affects': 'Weapon handling speed',
+        'category': 'Handling'
+    },
+    'accuracyAdd': {
+        'name': 'Accuracy',
+        'description': 'Bonus or penalty to base accuracy',
+        'format': 'percentage',
+        'example': '+10',
+        'affects': 'Hit probability',
+        'category': 'Combat'
+    },
+    'recoilAdd': {
+        'name': 'Recoil',
+        'description': 'Modifies weapon recoil and control',
+        'format': 'percentage',
+        'example': '-15',
+        'affects': 'Weapon stability',
+        'category': 'Combat'
+    },
+    'damageAdd': {
+        'name': 'Damage',
+        'description': 'Additional damage dealt by the weapon',
+        'format': 'flat value',
+        'example': '+5',
+        'affects': 'Damage output',
+        'category': 'Combat'
+    },
+    'penetrationAdd': {
+        'name': 'Penetration',
+        'description': 'Bonus to armor penetration capability',
+        'format': 'flat value',
+        'example': '+2',
+        'affects': 'Armor penetration',
+        'category': 'Combat'
+    },
+    'suppressionAdd': {
+        'name': 'Suppression',
+        'description': 'Changes effectiveness of suppressing enemies',
+        'format': 'percentage',
+        'example': '+20',
+        'affects': 'Enemy suppression',
+        'category': 'Combat'
+    },
+    'reloadTimeAdd': {
+        'name': 'Reload Time',
+        'description': 'Time to reload the weapon',
+        'format': 'ms',
+        'example': '-200',
+        'affects': 'Reload speed',
+        'category': 'Handling'
+    },
+    'weight': {
+        'name': 'Weight',
+        'description': 'Weight modifier affecting mobility',
+        'format': 'percentage',
+        'example': '-10',
+        'affects': 'Movement speed',
+        'category': 'General'
+    },
+    'protection': {
+        'name': 'Protection',
+        'description': 'Additional protection value (armor/helmet only)',
+        'format': 'flat value',
+        'example': '+1',
+        'affects': 'Damage reduction',
+        'category': 'Defense'
+    },
+    'concealment': {
+        'name': 'Concealment',
+        'description': 'Affects detection by enemies',
+        'format': 'flat value',
+        'example': '+2',
+        'affects': 'Stealth capability',
+        'category': 'General'
+    }
+}
+
 COLORS = {
     'background': "#211e1d",
     'section': {
@@ -51,6 +192,41 @@ COLORS = {
         'active': "#f97b03"
     }
 }
+
+class CreateToolTip:
+    """Create a tooltip for a given widget"""
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tooltip = None
+        self.widget.bind('<Enter>', self.enter)
+        self.widget.bind('<Leave>', self.leave)
+    
+    def enter(self, event=None):
+        x, y, _, _ = self.widget.bbox("insert")
+        x += self.widget.winfo_rootx() + 25
+        y += self.widget.winfo_rooty() + 20
+        self.tooltip = tk.Toplevel(self.widget)
+        self.tooltip.wm_overrideredirect(True)
+        self.tooltip.wm_geometry(f"+{x}+{y}")
+        label = tk.Label(
+            self.tooltip,
+            text=self.text,
+            justify='left',
+            background=COLORS['section']['background'],
+            foreground=COLORS['text'],
+            relief='solid',
+            borderwidth=1,
+            wraplength=180,
+            padx=5,
+            pady=3
+        )
+        label.pack()
+    
+    def leave(self, event=None):
+        if self.tooltip:
+            self.tooltip.destroy()
+            self.tooltip = None
 
 @dataclass
 class DoctrineNodeDefinition:
@@ -499,24 +675,117 @@ class DoctrineEditor(tk.Frame):
         dialog.title("Create New Node")
         dialog.transient(self)
         dialog.grab_set()
-        tk.Label(dialog, text="Node Name:").grid(row=0, column=0, padx=5, pady=5)
-        name_entry = ttk.Entry(dialog)
-        name_entry.grid(row=0, column=1, padx=5, pady=5)
-        tk.Label(dialog, text="Section:").grid(row=1, column=0, padx=5, pady=5)
+        
+        # Create main frame with dark theme
+        main_frame = tk.Frame(dialog, bg=COLORS['background'])
+        main_frame.pack(expand=True, fill='both', padx=10, pady=10)
+        
+        # Node name entry
+        name_frame = tk.Frame(main_frame, bg=COLORS['background'])
+        name_frame.pack(fill='x', pady=5)
+        
+        tk.Label(
+            name_frame,
+            text="Node Name:",
+            bg=COLORS['background'],
+            fg=COLORS['text']
+        ).pack(side='left', padx=5)
+        
+        name_var = tk.StringVar()
+        name_entry = ttk.Entry(name_frame, textvariable=name_var)
+        name_entry.pack(side='left', padx=5, expand=True, fill='x')
+        
+        # Character count label
+        char_count_label = tk.Label(
+            name_frame,
+            text="0/48",
+            bg=COLORS['background'],
+            fg=COLORS['text']
+        )
+        char_count_label.pack(side='left', padx=5)
+        
+        def update_char_count(*args):
+            count = len(name_var.get())
+            char_count_label.config(
+                text=f"{count}/48",
+                fg='red' if count > 48 else COLORS['text']
+            )
+        
+        name_var.trace('w', update_char_count)
+        
+        # Section selection
+        section_frame = tk.Frame(main_frame, bg=COLORS['background'])
+        section_frame.pack(fill='x', pady=5)
+        
+        tk.Label(
+            section_frame,
+            text="Section:",
+            bg=COLORS['background'],
+            fg=COLORS['text']
+        ).pack(side='left', padx=5)
+        
         section_var = tk.StringVar()
-        section_combo = ttk.Combobox(dialog, textvariable=section_var)
+        section_combo = ttk.Combobox(section_frame, textvariable=section_var)
         section_combo['values'] = list(self.sections.keys())
-        section_combo.grid(row=1, column=1, padx=5, pady=5)
-        def on_ok():
-            name = name_entry.get()
+        section_combo.pack(side='left', padx=5, expand=True, fill='x')
+        
+        # Error label
+        error_label = tk.Label(
+            main_frame,
+            text="",
+            bg=COLORS['background'],
+            fg='red',
+            wraplength=250
+        )
+        error_label.pack(pady=5)
+        
+        def validate_and_create():
+            name = name_var.get().strip()
             section_name = section_var.get()
-            if name and section_name:
-                section = self.sections[section_name]
-                node = DoctrineNode(name, x=0, y=-160, align='lt')
-                section.add_node(node)
-                self.draw_doctrine_tree()
-                dialog.destroy()
-        ttk.Button(dialog, text="OK", command=on_ok).grid(row=2, column=0, columnspan=2, pady=10)
+            
+            # Validate name length
+            if len(name) > 48:
+                error_label.config(text="Node name must not exceed 48 characters")
+                return
+            
+            # Validate name is not empty
+            if not name:
+                error_label.config(text="Node name cannot be empty")
+                return
+            
+            # Validate section is selected
+            if not section_name:
+                error_label.config(text="Please select a section")
+                return
+            
+            # Create the node
+            section = self.sections[section_name]
+            node = DoctrineNode(name, x=0, y=-160, align='lt')
+            section.add_node(node)
+            self.draw_doctrine_tree()
+            dialog.destroy()
+        
+        # Buttons
+        button_frame = tk.Frame(main_frame, bg=COLORS['background'])
+        button_frame.pack(fill='x', pady=10)
+        
+        ttk.Button(
+            button_frame,
+            text="Create",
+            command=validate_and_create
+        ).pack(side='right', padx=5)
+        
+        ttk.Button(
+            button_frame,
+            text="Cancel",
+            command=dialog.destroy
+        ).pack(side='right', padx=5)
+        
+        # Center the dialog
+        dialog.geometry("300x200")
+        x = self.winfo_rootx() + (self.winfo_width() // 2) - (300 // 2)
+        y = self.winfo_rooty() + (self.winfo_height() // 2) - (200 // 2)
+        dialog.geometry(f"+{x}+{y}")
     
     def toggle_connection_mode(self):
         if not self.connection_mode.get():
@@ -626,7 +895,12 @@ class DoctrineEditor(tk.Frame):
         context_menu = tk.Menu(self, tearoff=0)
         context_menu.configure(bg=COLORS['section']['background'], fg=COLORS['text'])
         
-        # Basic Node Operations
+        # Add menu items
+        context_menu.add_command(
+            label="Node Settings", 
+            command=lambda: self.show_node_settings(section_name, node_name)
+        )
+        context_menu.add_separator()
         context_menu.add_command(
             label="Delete Node", 
             command=lambda: self.delete_node(section_name, node_name)
@@ -635,38 +909,6 @@ class DoctrineEditor(tk.Frame):
             label="Edit Level", 
             command=lambda: self.edit_node_level(section_name, node_name)
         )
-        context_menu.add_command(
-            label="Edit Node Properties", 
-            command=lambda: self.edit_node_properties(section_name, node_name)
-        )
-        
-        # Equipment Modifiers Submenu
-        equipment_menu = tk.Menu(context_menu, tearoff=0)
-        equipment_menu.configure(bg=COLORS['section']['background'], fg=COLORS['text'])
-        equipment_menu.add_command(label="Add Equipment Modifier", command=lambda: self.add_equipment_modifier(section_name, node_name))
-        equipment_menu.add_command(label="Edit Equipment Modifiers", command=lambda: self.edit_equipment_modifiers(section_name, node_name))
-        context_menu.add_cascade(label="Equipment Modifiers", menu=equipment_menu)
-        
-        # Attack Type Modifiers Submenu
-        attack_menu = tk.Menu(context_menu, tearoff=0)
-        attack_menu.configure(bg=COLORS['section']['background'], fg=COLORS['text'])
-        attack_menu.add_command(label="Add Attack Type Modifier", command=lambda: self.add_attack_modifier(section_name, node_name))
-        attack_menu.add_command(label="Edit Attack Modifiers", command=lambda: self.edit_attack_modifiers(section_name, node_name))
-        context_menu.add_cascade(label="Attack Type Modifiers", menu=attack_menu)
-        
-        # Skills Submenu
-        skills_menu = tk.Menu(context_menu, tearoff=0)
-        skills_menu.configure(bg=COLORS['section']['background'], fg=COLORS['text'])
-        skills_menu.add_command(label="Enable/Disable Skills", command=lambda: self.edit_node_skills(section_name, node_name))
-        context_menu.add_cascade(label="Skills", menu=skills_menu)
-        
-        # Buffs Submenu
-        buffs_menu = tk.Menu(context_menu, tearoff=0)
-        buffs_menu.configure(bg=COLORS['section']['background'], fg=COLORS['text'])
-        buffs_menu.add_command(label="Add Buff Effect", command=lambda: self.add_buff_effect(section_name, node_name))
-        buffs_menu.add_command(label="Edit Buff Effects", command=lambda: self.edit_buff_effects(section_name, node_name))
-        context_menu.add_cascade(label="Buffs", menu=buffs_menu)
-        
         context_menu.add_separator()
         context_menu.add_checkbutton(
             label="Connection Mode",
@@ -680,265 +922,6 @@ class DoctrineEditor(tk.Frame):
         finally:
             context_menu.grab_release()
             
-    def edit_node_properties(self, section_name: str, node_name: str):
-        """Open a dialog to edit basic node properties"""
-        node = next((node for node in self.sections[section_name].nodes if node.name == node_name), None)
-        if not node:
-            return
-            
-        dialog = tk.Toplevel(self)
-        dialog.title("Edit Node Properties")
-        dialog.configure(bg=COLORS['background'])
-        dialog.transient(self)
-        dialog.grab_set()
-        
-        # Center the dialog
-        dialog.geometry("400x300")
-        x = self.winfo_rootx() + (self.winfo_width() // 2) - (400 // 2)
-        y = self.winfo_rooty() + (self.winfo_height() // 2) - (300 // 2)
-        dialog.geometry(f"+{x}+{y}")
-        
-        frame = tk.Frame(dialog, bg=COLORS['background'])
-        frame.pack(expand=True, fill='both', padx=10, pady=10)
-        
-        # Node Properties
-        tk.Label(frame, text="Name:", bg=COLORS['background'], fg=COLORS['text']).grid(row=0, column=0, sticky='w', pady=5)
-        name_var = tk.StringVar(value=node.name)
-        ttk.Entry(frame, textvariable=name_var).grid(row=0, column=1, sticky='ew', pady=5)
-        
-        tk.Label(frame, text="Display Name:", bg=COLORS['background'], fg=COLORS['text']).grid(row=1, column=0, sticky='w', pady=5)
-        display_name_var = tk.StringVar(value=node.definition.display_name if node.definition else "")
-        ttk.Entry(frame, textvariable=display_name_var).grid(row=1, column=1, sticky='ew', pady=5)
-        
-        tk.Label(frame, text="Description:", bg=COLORS['background'], fg=COLORS['text']).grid(row=2, column=0, sticky='w', pady=5)
-        description_text = tk.Text(frame, height=3, width=30)
-        if node.definition:
-            description_text.insert('1.0', node.definition.description)
-        description_text.grid(row=2, column=1, sticky='ew', pady=5)
-        
-        tk.Label(frame, text="Icon:", bg=COLORS['background'], fg=COLORS['text']).grid(row=3, column=0, sticky='w', pady=5)
-        icon_var = tk.StringVar(value=node.definition.icon if node.definition else "")
-        ttk.Entry(frame, textvariable=icon_var).grid(row=3, column=1, sticky='ew', pady=5)
-        
-        # Buttons
-        button_frame = tk.Frame(frame, bg=COLORS['background'])
-        button_frame.grid(row=4, column=0, columnspan=2, pady=20)
-        
-        ttk.Button(button_frame, text="OK", command=lambda: self.save_node_properties(
-            node, name_var.get(), display_name_var.get(), description_text.get('1.0', 'end-1c'),
-            icon_var.get(), dialog
-        )).pack(side='right', padx=5)
-        ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side='right')
-        
-        frame.columnconfigure(1, weight=1)
-        
-    def save_node_properties(self, node: DoctrineNode, name: str, display_name: str, description: str, icon: str, dialog: tk.Toplevel):
-        """Save the modified node properties"""
-        if not node.definition:
-            node.definition = DoctrineNodeDefinition(
-                name=name,
-                display_name=display_name,
-                description=description,
-                icon=icon,
-                requirements=[],
-                modifiers={},
-                max_level=1
-            )
-        else:
-            node.definition.name = name
-            node.definition.display_name = display_name
-            node.definition.description = description
-            node.definition.icon = icon
-        
-        node.name = name
-        self.draw_doctrine_tree()
-        dialog.destroy()
-        
-    def add_equipment_modifier(self, section_name: str, node_name: str):
-        """Open a dialog to add an equipment modifier"""
-        dialog = tk.Toplevel(self)
-        dialog.title("Add Equipment Modifier")
-        dialog.configure(bg=COLORS['background'])
-        dialog.transient(self)
-        dialog.grab_set()
-        
-        # Center the dialog
-        dialog.geometry("400x500")
-        x = self.winfo_rootx() + (self.winfo_width() // 2) - (400 // 2)
-        y = self.winfo_rooty() + (self.winfo_height() // 2) - (500 // 2)
-        dialog.geometry(f"+{x}+{y}")
-        
-        frame = tk.Frame(dialog, bg=COLORS['background'])
-        frame.pack(expand=True, fill='both', padx=10, pady=10)
-        
-        # Target Selection
-        tk.Label(frame, text="Target:", bg=COLORS['background'], fg=COLORS['text']).pack(anchor='w', pady=5)
-        target_var = tk.StringVar(value="all")
-        targets = ["all", "pistol", "rifle", "shotgun", "rpg", "Armor", "Shield", "Grenade"]
-        target_combo = ttk.Combobox(frame, textvariable=target_var, values=targets)
-        target_combo.pack(fill='x', pady=5)
-        
-        # Common Modifiers
-        tk.Label(frame, text="Common Modifiers:", bg=COLORS['background'], fg=COLORS['text']).pack(anchor='w', pady=5)
-        modifiers_frame = tk.Frame(frame, bg=COLORS['background'])
-        modifiers_frame.pack(fill='x', pady=5)
-        
-        modifier_entries = {}
-        common_modifiers = {
-            "changeOutTime": "+0",
-            "reloadSpeed": "+0",
-            "accuracyAdd": "+0",
-            "suppressionRecoveryAdd": "+0",
-            "conditioning": "+0",
-            "coverPercentAdd": "+0",
-            "flinchResistance": "+0"
-        }
-        
-        row = 0
-        col = 0
-        for mod_name, default_val in common_modifiers.items():
-            mod_frame = tk.Frame(modifiers_frame, bg=COLORS['background'])
-            mod_frame.grid(row=row, column=col, padx=5, pady=5)
-            
-            tk.Label(mod_frame, text=f"{mod_name}:", bg=COLORS['background'], fg=COLORS['text']).pack(anchor='w')
-            mod_var = tk.StringVar(value=default_val)
-            ttk.Entry(mod_frame, textvariable=mod_var, width=8).pack()
-            modifier_entries[mod_name] = mod_var
-            
-            col += 1
-            if col > 2:
-                col = 0
-                row += 1
-        
-        # Buttons
-        button_frame = tk.Frame(frame, bg=COLORS['background'])
-        button_frame.pack(fill='x', pady=20)
-        
-        ttk.Button(button_frame, text="Add Modifier", command=lambda: self.save_equipment_modifier(
-            section_name, node_name, target_var.get(), modifier_entries, dialog
-        )).pack(side='right', padx=5)
-        ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side='right')
-        
-    def save_equipment_modifier(self, section_name: str, node_name: str, target: str, modifier_entries: Dict[str, tk.StringVar], dialog: tk.Toplevel):
-        """Save the equipment modifier to the node's definition"""
-        node = next((node for node in self.sections[section_name].nodes if node.name == node_name), None)
-        if not node or not node.definition:
-            return
-            
-        modifiers = {}
-        for mod_name, var in modifier_entries.items():
-            value = var.get().strip()
-            if value and value != "+0":
-                modifiers[mod_name] = value
-                
-        if modifiers:
-            if 'equipment_modifiers' not in node.definition.modifiers:
-                node.definition.modifiers['equipment_modifiers'] = []
-            node.definition.modifiers['equipment_modifiers'].append({
-                'target': target,
-                **modifiers
-            })
-            
-        dialog.destroy()
-        
-    def add_attack_modifier(self, section_name: str, node_name: str):
-        """Open a dialog to add an attack type modifier"""
-        dialog = tk.Toplevel(self)
-        dialog.title("Add Attack Type Modifier")
-        dialog.configure(bg=COLORS['background'])
-        dialog.transient(self)
-        dialog.grab_set()
-        
-        # Implementation similar to add_equipment_modifier but with attack-specific options
-        pass
-        
-    def edit_node_skills(self, section_name: str, node_name: str):
-        """Open a dialog to enable/disable skills for the node"""
-        dialog = tk.Toplevel(self)
-        dialog.title("Enable/Disable Skills")
-        dialog.configure(bg=COLORS['background'])
-        dialog.transient(self)
-        dialog.grab_set()
-        
-        # Center the dialog
-        dialog.geometry("300x400")
-        x = self.winfo_rootx() + (self.winfo_width() // 2) - (300 // 2)
-        y = self.winfo_rooty() + (self.winfo_height() // 2) - (400 // 2)
-        dialog.geometry(f"+{x}+{y}")
-        
-        frame = tk.Frame(dialog, bg=COLORS['background'])
-        frame.pack(expand=True, fill='both', padx=10, pady=10)
-        
-        # List of available skills
-        skills = [
-            "SurvivalRate",
-            "PistolTransition",
-            "SelfFirstAid",
-            "AdvancedLanguage",
-            "Backstabbing",
-            "PriorityBombers",
-            "SpeedyRifles",
-            "AdvanceIntel",
-            "HumintNetwork",
-            "Persuasion",
-            "Ambush",
-            "Concealment",
-            "ConcealPistols",
-            "BasicLanguage"
-        ]
-        
-        # Create checkboxes for each skill
-        skill_vars = {}
-        for skill in skills:
-            var = tk.BooleanVar(value=False)
-            skill_vars[skill] = var
-            ttk.Checkbutton(frame, text=skill, variable=var).pack(anchor='w', pady=2)
-        
-        # Buttons
-        button_frame = tk.Frame(frame, bg=COLORS['background'])
-        button_frame.pack(fill='x', pady=20)
-        
-        ttk.Button(button_frame, text="Save", command=lambda: self.save_node_skills(
-            section_name, node_name, skill_vars, dialog
-        )).pack(side='right', padx=5)
-        ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side='right')
-        
-    def save_node_skills(self, section_name: str, node_name: str, skill_vars: Dict[str, tk.BooleanVar], dialog: tk.Toplevel):
-        """Save the enabled skills to the node's definition"""
-        node = next((node for node in self.sections[section_name].nodes if node.name == node_name), None)
-        if not node or not node.definition:
-            return
-            
-        enabled_skills = []
-        for skill, var in skill_vars.items():
-            if var.get():
-                enabled_skills.append(skill)
-                
-        if enabled_skills:
-            node.definition.modifiers['enabled_skills'] = enabled_skills
-            
-        dialog.destroy()
-        
-    def add_buff_effect(self, section_name: str, node_name: str):
-        """Open a dialog to add a buff effect"""
-        # Implementation for adding buff effects
-        pass
-        
-    def edit_equipment_modifiers(self, section_name: str, node_name: str):
-        """Open a dialog to edit existing equipment modifiers"""
-        # Implementation for editing existing equipment modifiers
-        pass
-        
-    def edit_attack_modifiers(self, section_name: str, node_name: str):
-        """Open a dialog to edit existing attack modifiers"""
-        # Implementation for editing existing attack modifiers
-        pass
-        
-    def edit_buff_effects(self, section_name: str, node_name: str):
-        """Open a dialog to edit existing buff effects"""
-        # Implementation for editing existing buff effects
-        pass
-    
     def edit_node_level(self, section_name: str, node_name: str):
         """Open a dialog to edit the node's level"""
         node = next((node for node in self.sections[section_name].nodes if node.name == node_name), None)
@@ -1028,14 +1011,66 @@ class DoctrineEditor(tk.Frame):
     
     def save_to_xml(self):
         try:
-            # Save doctrine nodes XML
+            # First, check all files exist and are accessible
+            required_files = {
+                'doctrine_nodes': DOCTRINE_NODES_XML,
+                'doctrine_tree': DOCTRINE_TREE_XML,
+                'unit': UNIT_XML
+            }
+            
+            for file_type, file_path in required_files.items():
+                if not os.path.exists(file_path):
+                    raise FileNotFoundError(f"Required {file_type} file not found: {file_path}")
+                if not os.access(file_path, os.W_OK):
+                    raise PermissionError(f"No write permission for {file_type} file: {file_path}")
+            
+            # Load all required XML files
             tree_nodes = ET.parse(DOCTRINE_NODES_XML)
+            tree_layout = ET.parse(DOCTRINE_TREE_XML)
+            tree_unit = ET.parse(UNIT_XML)
+            
             root_nodes = tree_nodes.getroot()
+            root_layout = tree_layout.getroot()
+            root_unit = tree_unit.getroot()
+            
+            # Track node name changes
+            name_changes = []
             active_nodes = set()
+            
+            # Check for name changes and validate lengths
             for section in self.sections.values():
                 for node in section.nodes:
+                    if len(node.name) > 48:
+                        raise ValueError(f"Node name '{node.name}' exceeds maximum length of 48 characters")
+                    
+                    # Check if this is a renamed node
+                    old_name = None
+                    existing_node = root_nodes.find(f".//Node[@name='{node.name}']")
+                    if existing_node is None:
+                        # Look for a node with matching display name or description
+                        for old_node in root_nodes.findall(".//Node"):
+                            if (old_node.get('nameUI', '').lower() == f"@{node.name.lower()}_name" or
+                                old_node.get('description', '').lower() == f"@{node.name.lower()}_desc"):
+                                old_name = old_node.get('name')
+                                name_changes.append((old_name, node.name))
+                                break
+                    
                     active_nodes.add(node.name)
             
+            # If there are name changes, show warning dialog
+            if name_changes:
+                warning_msg = "The following node names have changed:\n\n"
+                for old_name, new_name in name_changes:
+                    warning_msg += f"• {old_name} → {new_name}\n"
+                warning_msg += "\nPlease ensure you update these names in:\n"
+                warning_msg += "1. units.xml (for each unit's doctrine)\n"
+                warning_msg += "2. gui/doctrine.xml\n\n"
+                warning_msg += "Do you want to continue saving?"
+                
+                if not messagebox.askyesno("Warning - Node Names Changed", warning_msg):
+                    return
+            
+            # Proceed with saving
             new_root = ET.Element("DoctrineNodes")
             for section in self.sections.values():
                 for node in section.nodes:
@@ -1044,7 +1079,6 @@ class DoctrineEditor(tk.Frame):
                         existing_node.set("nameUI", f"@{node.name.lower()}_name")
                         existing_node.set("description", f"@{node.name.lower()}_desc")
                         existing_node.set("texturePrefix", "data/textures/gui/doctrines/doctrine_empty")
-                        new_root.append(existing_node)
                     else:
                         node_def = ET.SubElement(new_root, "Node")
                         node_def.set("name", node.name)
@@ -1056,26 +1090,20 @@ class DoctrineEditor(tk.Frame):
                         equip_mod.set("readyTime", "-50")
                         equip_mod.set("accuracyAdd", "+10")
             
-            # Format the doctrine nodes XML with proper indentation
+            # Format and save doctrine nodes XML
             xml_str = ET.tostring(new_root, encoding='unicode')
-            import xml.dom.minidom
             dom = xml.dom.minidom.parseString(xml_str)
             pretty_xml = dom.toprettyxml(indent='    ')
-            # Clean up empty lines while preserving structure
             lines = [line for line in pretty_xml.split('\n') if line.strip()]
             formatted_xml = '\n'.join(lines)
             
-            # Write the formatted XML to file, ensuring only one XML declaration
             with open(DOCTRINE_NODES_XML, 'w', encoding='utf-8') as f:
-                # Remove any existing XML declaration from formatted_xml
                 if formatted_xml.startswith('<?xml'):
                     formatted_xml = formatted_xml[formatted_xml.find('?>')+2:].strip()
                 f.write('<?xml version="1.0" encoding="utf-8"?>\n')
                 f.write(formatted_xml)
             
-            # Save doctrine tree XML
-            tree_layout = ET.parse(DOCTRINE_TREE_XML)
-            root_layout = tree_layout.getroot()
+            # Update doctrine tree XML
             main_container = root_layout.find(".//Item[@name='#MARSOC_DoctrineTree']")
             if main_container is None:
                 logger.error("Could not find main doctrine tree container")
@@ -1095,9 +1123,8 @@ class DoctrineEditor(tk.Frame):
                 for node in section.nodes:
                     node_elem = ET.SubElement(section_elem, "Item")
                     node_elem.set("name", node.name)
-                    # Apply offsets when saving node positions
                     xml_x = node.x + XML_OFFSET_X
-                    xml_y = node.y - XML_OFFSET_Y  # Subtract Y offset since Y is negative in the game's coordinate system
+                    xml_y = node.y - XML_OFFSET_Y
                     node_elem.set("origin", f"{xml_x} {xml_y}")
                     node_elem.set("align", node.align)
                     if node.connections:
@@ -1112,40 +1139,57 @@ class DoctrineEditor(tk.Frame):
                         arrow_image = ET.SubElement(active_image, "StaticImage", origin="0 -16", align="b")
                         ET.SubElement(arrow_image, "RenderObject2D", texture="data/textures/gui/doctrines/doctrine_arrow.dds", color="f97b03")
             
+            # Save doctrine tree XML
             xml_str = ET.tostring(root_layout, encoding='unicode')
-            import xml.dom.minidom
             dom = xml.dom.minidom.parseString(xml_str)
             pretty_xml = dom.toprettyxml(indent='    ')
             pretty_xml = '\n'.join(line for line in pretty_xml.split('\n') if line.strip())
             with open(DOCTRINE_TREE_XML, 'w', encoding='utf-8') as f:
                 f.write(pretty_xml)
-
-            # Save unit XML
-            try:
-                tree_unit = ET.parse(UNIT_XML)
-                root_unit = tree_unit.getroot()
-                doctrine_elem = root_unit.find('.//Doctrine')
-                if doctrine_elem is not None:
-                    for child in list(doctrine_elem):
-                        doctrine_elem.remove(child)
-                    for section in self.sections.values():
-                        for node in section.nodes:
-                            unit_node = ET.SubElement(doctrine_elem, 'Node')
-                            unit_node.set('name', node.name)
-                            if node.level > 1:
-                                unit_node.set('numLevels', str(node.level))
-                    tree_unit.write(UNIT_XML, encoding='utf-8', xml_declaration=True)
-                else:
-                    logger.warning('No <Doctrine> element found in the units file.')
-            except Exception as unit_e:
-                logger.error(f'Error updating units file: {str(unit_e)}')
-
+            
+            # Update unit XML
+            doctrine_elem = root_unit.find('.//Doctrine')
+            if doctrine_elem is not None:
+                for child in list(doctrine_elem):
+                    doctrine_elem.remove(child)
+                for section in self.sections.values():
+                    for node in section.nodes:
+                        unit_node = ET.SubElement(doctrine_elem, 'Node')
+                        unit_node.set('name', node.name)
+                        if node.level > 1:
+                            unit_node.set('numLevels', str(node.level))
+                tree_unit.write(UNIT_XML, encoding='utf-8', xml_declaration=True)
+            else:
+                logger.warning('No <Doctrine> element found in the units file.')
+            
             logger.info("Successfully saved doctrine tree and node definitions")
-            messagebox.showinfo("Success", "Successfully saved to both XML files")
+            if name_changes:
+                messagebox.showinfo(
+                    "Success", 
+                    "Files saved successfully.\n\nRemember to update the node names in:\n" +
+                    "1. units.xml (for each unit's doctrine)\n" +
+                    "2. gui/doctrine.xml"
+                )
+            else:
+                messagebox.showinfo("Success", "Successfully saved to all XML files")
+                
+        except FileNotFoundError as e:
+            error_msg = f"File not found: {str(e)}"
+            logger.error(error_msg)
+            messagebox.showerror("Error", error_msg)
+        except ET.ParseError as e:
+            error_msg = f"Error parsing XML file: {str(e)}"
+            logger.error(error_msg)
+            messagebox.showerror("Error", error_msg)
+        except PermissionError as e:
+            error_msg = f"Permission denied: {str(e)}"
+            logger.error(error_msg)
+            messagebox.showerror("Error", error_msg)
         except Exception as e:
-            logger.error(f"Error saving doctrine files: {str(e)}")
-            messagebox.showerror("Error", f"Failed to save doctrine files: {str(e)}")
-    
+            error_msg = f"Error saving doctrine files: {str(e)}"
+            logger.error(error_msg)
+            messagebox.showerror("Error", error_msg)
+
     def draw_node(self, node: DoctrineNode, section: Section, canvas_x: int, canvas_y: int):
         x = canvas_x + node.x
         y = canvas_y + node.y
@@ -1236,6 +1280,357 @@ class DoctrineEditor(tk.Frame):
                     self.draw_doctrine_tree()
             except ValueError:
                 pass
+
+    def show_node_settings(self, section_name: str, node_name: str):
+        """Show the node settings dialog"""
+        dialog = tk.Toplevel(self)
+        dialog.title(f"Node Settings - {node_name}")
+        dialog.configure(bg=COLORS['background'])
+        dialog.transient(self)
+        dialog.grab_set()
+        
+        # Center the dialog
+        dialog.geometry("800x800")
+        x = self.winfo_rootx() + (self.winfo_width() // 2) - (800 // 2)
+        y = self.winfo_rooty() + (self.winfo_height() // 2) - (800 // 2)
+        dialog.geometry(f"+{x}+{y}")
+        
+        # Create notebook for tabs
+        notebook = ttk.Notebook(dialog)
+        notebook.pack(expand=True, fill='both', padx=10, pady=10)
+        
+        # Skills tab
+        skills_frame = tk.Frame(notebook, bg=COLORS['background'])
+        notebook.add(skills_frame, text='Skills')
+        
+        # Equipment tab
+        equipment_frame = tk.Frame(notebook, bg=COLORS['background'])
+        notebook.add(equipment_frame, text='Equipment')
+        
+        # Load current settings from XML
+        current_skills = {}
+        current_equipment = {}
+        try:
+            tree = ET.parse(DOCTRINE_NODES_XML)
+            root = tree.getroot()
+            node_elem = root.find(f".//Node[@name='{node_name}']")
+            if node_elem is not None:
+                # Load skills
+                for enable in node_elem.findall("Enable"):
+                    skill_name = enable.get('name')
+                    if skill_name in SKILLS:
+                        value = enable.get('value', '')
+                        current_skills[skill_name] = value
+                
+                # Load equipment modifiers
+                for equip_mod in node_elem.findall("EquipmentModifier"):
+                    target = equip_mod.get('target')
+                    if target in EQUIPMENT_TYPES:
+                        current_equipment[target] = {
+                            attr: equip_mod.get(attr)
+                            for attr in EQUIPMENT_ATTRIBUTES
+                            if equip_mod.get(attr) is not None
+                        }
+        except Exception as e:
+            logger.error(f"Error loading current settings: {str(e)}")
+        
+        # Skills tab content
+        skills_title = tk.Label(
+            skills_frame,
+            text="Enable/Disable Skills",
+            font=("Arial", 14, "bold"),
+            bg=COLORS['background'],
+            fg=COLORS['text']
+        )
+        skills_title.pack(pady=(10, 10))
+        
+        # Create canvas and scrollbar for skills
+        skills_canvas = tk.Canvas(skills_frame, bg=COLORS['background'], highlightthickness=0)
+        skills_scrollbar = ttk.Scrollbar(skills_frame, orient="vertical", command=skills_canvas.yview)
+        skills_scrollable = tk.Frame(skills_canvas, bg=COLORS['background'])
+        
+        skills_scrollable.bind(
+            "<Configure>",
+            lambda e: skills_canvas.configure(scrollregion=skills_canvas.bbox("all"))
+        )
+        
+        skills_canvas.create_window((0, 0), window=skills_scrollable, anchor="nw")
+        skills_canvas.configure(yscrollcommand=skills_scrollbar.set)
+        
+        # Add skills with checkboxes and value entries
+        skill_vars = {}
+        value_vars = {}
+        
+        for skill_name, description in SKILLS.items():
+            frame = tk.Frame(skills_scrollable, bg=COLORS['background'])
+            frame.pack(fill='x', padx=5, pady=2)
+            
+            initial_value = skill_name in current_skills
+            var = tk.BooleanVar(value=initial_value)
+            skill_vars[skill_name] = var
+            
+            cb = ttk.Checkbutton(
+                frame,
+                text=skill_name,
+                variable=var,
+                style='Switch.TCheckbutton'
+            )
+            cb.pack(side='left', padx=5)
+            
+            if skill_name in SKILLS_WITH_VALUES:
+                initial_value = current_skills.get(skill_name, "0")
+                value_var = tk.StringVar(value=initial_value)
+                value_vars[skill_name] = value_var
+                value_entry = ttk.Entry(frame, width=5, textvariable=value_var)
+                value_entry.pack(side='left', padx=5)
+            
+            desc_label = tk.Label(
+                frame,
+                text=description,
+                bg=COLORS['background'],
+                fg=COLORS['text'],
+                wraplength=400,
+                justify='left'
+            )
+            desc_label.pack(side='left', padx=5, fill='x', expand=True)
+        
+        skills_canvas.pack(side="left", fill="both", expand=True)
+        skills_scrollbar.pack(side="right", fill="y")
+        
+        # Equipment tab content
+        equipment_title = tk.Label(
+            equipment_frame,
+            text="Equipment Modifiers",
+            font=("Arial", 14, "bold"),
+            bg=COLORS['background'],
+            fg=COLORS['text']
+        )
+        equipment_title.pack(pady=(10, 10))
+        
+        # Create canvas and scrollbar for equipment
+        equip_canvas = tk.Canvas(equipment_frame, bg=COLORS['background'], highlightthickness=0)
+        equip_scrollbar = ttk.Scrollbar(equipment_frame, orient="vertical", command=equip_canvas.yview)
+        equip_scrollable = tk.Frame(equip_canvas, bg=COLORS['background'])
+        
+        equip_scrollable.bind(
+            "<Configure>",
+            lambda e: equip_canvas.configure(scrollregion=equip_canvas.bbox("all"))
+        )
+        
+        equip_canvas.create_window((0, 0), window=equip_scrollable, anchor="nw")
+        equip_canvas.configure(yscrollcommand=equip_scrollbar.set)
+        
+        # Equipment modifiers
+        equipment_vars = {}
+        for equip_type, equip_info in EQUIPMENT_TYPES.items():
+            # Create a frame for each equipment type
+            equip_frame = tk.Frame(equip_scrollable, bg=COLORS['background'])
+            equip_frame.pack(fill='x', padx=5, pady=10)
+            
+            # Equipment type header with description
+            header_frame = tk.Frame(equip_frame, bg=COLORS['background'])
+            header_frame.pack(fill='x', pady=(0, 5))
+            
+            tk.Label(
+                header_frame,
+                text=equip_info['name'],
+                font=("Arial", 12, "bold"),
+                bg=COLORS['background'],
+                fg=COLORS['text']
+            ).pack(side='left')
+            
+            tk.Label(
+                header_frame,
+                text=f" - {equip_info['description']}",
+                font=("Arial", 10),
+                bg=COLORS['background'],
+                fg=COLORS['text']
+            ).pack(side='left', padx=5)
+            
+            # Create a frame for attributes
+            attrs_frame = tk.Frame(equip_frame, bg=COLORS['background'])
+            attrs_frame.pack(fill='x', padx=20)
+            
+            equipment_vars[equip_type] = {}
+            current_values = current_equipment.get(equip_type, {})
+            
+            # Only show attributes valid for this equipment type
+            valid_attributes = EQUIPMENT_TYPE_ATTRIBUTES.get(equip_type, [])
+            
+            # Group attributes by category
+            categorized_attrs = {}
+            for attr in valid_attributes:
+                info = EQUIPMENT_ATTRIBUTES[attr]
+                category = info['category']
+                if category not in categorized_attrs:
+                    categorized_attrs[category] = []
+                categorized_attrs[category].append((attr, info))
+            
+            # Create sections for each category
+            for category, attrs in categorized_attrs.items():
+                category_frame = tk.Frame(attrs_frame, bg=COLORS['background'])
+                category_frame.pack(fill='x', pady=5)
+                
+                tk.Label(
+                    category_frame,
+                    text=category,
+                    font=("Arial", 10, "bold"),
+                    bg=COLORS['background'],
+                    fg=COLORS['text']
+                ).pack(anchor='w', pady=(5,2))
+                
+                for attr, info in attrs:
+                    # Create frame for each attribute
+                    attr_frame = tk.Frame(category_frame, bg=COLORS['background'])
+                    attr_frame.pack(fill='x', pady=2)
+                    
+                    # Main attribute info
+                    main_info_frame = tk.Frame(attr_frame, bg=COLORS['background'])
+                    main_info_frame.pack(side='left')
+                    
+                    tk.Label(
+                        main_info_frame,
+                        text=f"{info['name']}:",
+                        font=("Arial", 10),
+                        bg=COLORS['background'],
+                        fg=COLORS['text']
+                    ).pack(side='left')
+                    
+                    var = tk.StringVar(value=current_values.get(attr, ''))
+                    equipment_vars[equip_type][attr] = var
+                    
+                    entry = ttk.Entry(main_info_frame, width=8, textvariable=var)
+                    entry.pack(side='left', padx=5)
+                    
+                    # Format and example
+                    tk.Label(
+                        main_info_frame,
+                        text=f"({info['format']}, e.g., {info['example']})",
+                        font=("Arial", 9),
+                        bg=COLORS['background'],
+                        fg=COLORS['text']
+                    ).pack(side='left', padx=5)
+                    
+                    # Description and effects
+                    desc_frame = tk.Frame(attr_frame, bg=COLORS['background'])
+                    desc_frame.pack(fill='x', padx=20)
+                    
+                    tk.Label(
+                        desc_frame,
+                        text=info['description'],
+                        font=("Arial", 9),
+                        bg=COLORS['background'],
+                        fg=COLORS['text'],
+                        wraplength=400,
+                        justify='left'
+                    ).pack(anchor='w')
+                    
+                    tk.Label(
+                        desc_frame,
+                        text=f"Affects: {info['affects']}",
+                        font=("Arial", 9, "italic"),
+                        bg=COLORS['background'],
+                        fg=COLORS['text']
+                    ).pack(anchor='w')
+        
+        equip_canvas.pack(side="left", fill="both", expand=True)
+        equip_scrollbar.pack(side="right", fill="y")
+        
+        # Add buttons at the bottom
+        button_frame = tk.Frame(dialog, bg=COLORS['background'])
+        button_frame.pack(fill='x', padx=10, pady=10)
+        
+        ttk.Button(
+            button_frame,
+            text="Apply",
+            command=lambda: self.apply_node_settings(node_name, skill_vars, value_vars, equipment_vars, dialog)
+        ).pack(side='right', padx=5)
+        
+        ttk.Button(
+            button_frame,
+            text="Cancel",
+            command=dialog.destroy
+        ).pack(side='right', padx=5)
+
+    def apply_node_settings(self, node_name: str, skill_vars: Dict[str, tk.BooleanVar], 
+                          value_vars: Dict[str, tk.StringVar], equipment_vars: Dict[str, Dict[str, tk.StringVar]], 
+                          dialog: tk.Toplevel):
+        """Apply the node settings and update the XML"""
+        try:
+            # Parse the current doctrine nodes XML
+            tree = ET.parse(DOCTRINE_NODES_XML)
+            root = tree.getroot()
+            
+            # Find or create the node
+            node_elem = root.find(f".//Node[@name='{node_name}']")
+            if node_elem is None:
+                node_elem = ET.SubElement(root, "Node")
+                node_elem.set("name", node_name)
+                node_elem.set("nameUI", f"@{node_name.lower()}_name")
+                node_elem.set("description", f"@{node_name.lower()}_desc")
+                node_elem.set("texturePrefix", "data/textures/gui/doctrines/doctrine_empty")
+            
+            # Remove all existing effect elements
+            for effect_type in ['Enable', 'EquipmentModifier', 'AttackTypeModifier']:
+                for elem in node_elem.findall(effect_type):
+                    node_elem.remove(elem)
+            
+            # Add new Enable elements based on selected skills
+            for skill_name, var in skill_vars.items():
+                if var.get():
+                    enable = ET.SubElement(node_elem, "Enable")
+                    enable.set("name", skill_name)
+                    if skill_name in SKILLS_WITH_VALUES:
+                        value = value_vars[skill_name].get()
+                        if value.strip():  # Only set value if it's not empty
+                            enable.set("value", value)
+            
+            # Add equipment modifiers
+            for equip_type, attrs in equipment_vars.items():
+                has_modifiers = any(var.get().strip() for var in attrs.values())
+                if has_modifiers:
+                    equip_mod = ET.SubElement(node_elem, "EquipmentModifier")
+                    equip_mod.set("target", equip_type)
+                    for attr, var in attrs.items():
+                        value = var.get().strip()
+                        if value:
+                            equip_mod.set(attr, value)
+            
+            # Save the XML with proper formatting
+            xml_str = ET.tostring(root, encoding='unicode')
+            dom = xml.dom.minidom.parseString(xml_str)
+            pretty_xml = dom.toprettyxml(indent='    ')
+            # Clean up empty lines while preserving structure
+            lines = [line for line in pretty_xml.split('\n') if line.strip()]
+            formatted_xml = '\n'.join(lines)
+            
+            # Write the formatted XML to file, ensuring only one XML declaration
+            with open(DOCTRINE_NODES_XML, 'w', encoding='utf-8') as f:
+                # Remove any existing XML declaration from formatted_xml
+                if formatted_xml.startswith('<?xml'):
+                    formatted_xml = formatted_xml[formatted_xml.find('?>')+2:].strip()
+                f.write('<?xml version="1.0" encoding="utf-8"?>\n')
+                f.write(formatted_xml)
+            
+            dialog.destroy()
+            messagebox.showinfo("Success", "Node settings saved successfully!")
+            
+        except FileNotFoundError:
+            error_msg = f"Could not find doctrine nodes file: {DOCTRINE_NODES_XML}"
+            logger.error(error_msg)
+            messagebox.showerror("Error", error_msg)
+        except ET.ParseError as e:
+            error_msg = f"Error parsing XML file: {str(e)}"
+            logger.error(error_msg)
+            messagebox.showerror("Error", error_msg)
+        except PermissionError:
+            error_msg = f"Permission denied when trying to save to: {DOCTRINE_NODES_XML}"
+            logger.error(error_msg)
+            messagebox.showerror("Error", error_msg)
+        except Exception as e:
+            error_msg = f"Error saving node settings: {str(e)}"
+            logger.error(error_msg)
+            messagebox.showerror("Error", error_msg)
 
 # Plugin entry point
 PLUGIN_TITLE = "Doctrine Editor"

@@ -5,6 +5,7 @@ import os
 import json
 from utils import load_xml as util_load_xml
 from modules import config_editor_module
+from modules.mod_files import mod_files
 
 PLUGIN_TITLE = "Units Editor"
 
@@ -35,6 +36,37 @@ class UnitsEditor(tk.Frame):
         self.trooper_rank_entries = []  # List of tuples: (rank_elem, {field: entry})
         self.rank_entries = []          # List of tuples: (rank_elem, {field: entry})
         self.config = config_editor_module.load_config()
+        
+        # Initialize mod_files with proper error handling
+        try:
+            mod_path = self.config.get("mod_path", "")
+            current_mod = self.config.get("last_used_mod", "")
+            
+            if not mod_path or not current_mod:
+                log(f"Invalid configuration - mod_path: {mod_path}, current_mod: {current_mod}")
+                raise ValueError("Mod path or current mod not configured")
+                
+            full_mod_path = os.path.join(mod_path, current_mod)
+            log(f"Initializing mod_files with path: {full_mod_path}")
+            
+            if not os.path.exists(full_mod_path):
+                log(f"Mod directory does not exist: {full_mod_path}")
+                raise ValueError(f"Mod directory not found: {full_mod_path}")
+            
+            # Initialize mod_files
+            mod_files.__init__(full_mod_path)
+            
+            # Verify initialization by checking if we can get the unit file
+            unit_file = mod_files.get_unit_file()
+            if unit_file:
+                log(f"Successfully found unit file: {unit_file}")
+            else:
+                log("No unit file found, creating default unit file...")
+                self.create_default_unit_file()
+                
+        except Exception as e:
+            log(f"Error initializing mod_files: {str(e)}")
+            messagebox.showerror("Error", f"Failed to initialize mod files: {str(e)}")
         
         # Create main frame to hold both scrollbars
         self.main_frame = ttk.Frame(self)
@@ -99,49 +131,50 @@ class UnitsEditor(tk.Frame):
         self.canvas.xview_scroll(int(-1*(event.delta/120)), "units")
 
     def get_xml_path(self):
-        """Get the current unit XML file path based on configuration"""
-        mod_path = self.config.get("mod_path", "")
-        current_mod = self.config.get("last_used_mod", "")
-        if not mod_path or not current_mod:
+        """Get the current unit XML file path using mod_files"""
+        try:
+            xml_path = mod_files.get_unit_file()
+            log(f"Getting XML path: {xml_path}")
+            return xml_path
+        except Exception as e:
+            log(f"Error getting XML path: {str(e)}")
             return None
-        
-        # Get the full mod directory path
-        mod_dir = os.path.join(mod_path, current_mod, "units")
-        if not os.path.exists(mod_dir):
-            return None  # Don't return a path if directory doesn't exist
-        
-        # Find all *_unit.xml files
-        unit_files = []
-        for file in os.listdir(mod_dir):
-            if file.endswith("_unit.xml"):
-                full_path = os.path.join(mod_dir, file)
-                unit_files.append((full_path, os.path.getsize(full_path)))
-        
-        # If no *_unit.xml files found, use default unit.xml
-        if not unit_files:
-            return os.path.join(mod_dir, "unit.xml")
-        
-        # Sort by file size (largest first) and return the path
-        unit_files.sort(key=lambda x: x[1], reverse=True)
-        return unit_files[0][0]
 
     def load_xml(self):
-        xml_path = self.get_xml_path()
-        if not xml_path:
-            messagebox.showerror("Error", "No mod path configured")
-            return
+        try:
+            xml_path = self.get_xml_path()
+            if not xml_path:
+                log("No XML path returned from get_xml_path()")
+                messagebox.showerror("Error", "No unit file found. Please ensure you have selected a valid mod directory.")
+                return
             
-        if not os.path.exists(xml_path):
-            messagebox.showerror("Error", "Unit file not found. Please create it first.")
-            return
+            log(f"Loading XML from: {xml_path}")
             
-        self.tree, root = util_load_xml(xml_path)
-        if root:
+            if not os.path.exists(xml_path):
+                log(f"XML file does not exist: {xml_path}")
+                messagebox.showerror("Error", f"Unit file not found: {xml_path}")
+                return
+            
+            self.tree, root = util_load_xml(xml_path)
+            if root is None:
+                log("Failed to load XML - root is None")
+                messagebox.showerror("Error", "Failed to load XML file - no root element found")
+                return
+                
             self.unit_elem = root.find('Unit')
             if self.unit_elem is None:
+                log("No Unit element found in XML")
                 messagebox.showerror("Error", "No <Unit> element found in the XML file. Please ensure the XML structure is correct.")
-        else:
-            self.unit_elem = None
+                return
+                
+            log("Successfully loaded XML file")
+            
+        except ET.ParseError as e:
+            log(f"XML Parse Error: {str(e)}")
+            messagebox.showerror("Error", f"Failed to parse unit file: {str(e)}")
+        except Exception as e:
+            log(f"Unexpected error loading XML: {str(e)}")
+            messagebox.showerror("Error", f"Error loading unit file: {str(e)}")
 
     def remove_class(self, class_elem, entries, remove_btn, row_index):
         """Remove a class from both the XML and UI"""
@@ -605,6 +638,68 @@ class UnitsEditor(tk.Frame):
             messagebox.showinfo("Success", "XML file updated successfully.")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to write XML: {e}")
+
+    def create_default_unit_file(self):
+        """Create a default unit file if none exists"""
+        try:
+            # Get the mod path
+            mod_path = os.path.join(self.config.get("mod_path", ""), self.config.get("last_used_mod", ""))
+            units_dir = os.path.join(mod_path, "units")
+            
+            # Create units directory if it doesn't exist
+            if not os.path.exists(units_dir):
+                log(f"Creating units directory: {units_dir}")
+                os.makedirs(units_dir)
+            
+            # Create default unit file path
+            unit_file = os.path.join(units_dir, "unit.xml")
+            
+            if os.path.exists(unit_file):
+                log(f"Unit file already exists: {unit_file}")
+                return
+            
+            # Create default XML structure
+            root = ET.Element("Units")
+            unit = ET.SubElement(root, "Unit")
+            unit.set("name", "NewUnit")
+            unit.set("nameUI", "@newunit_name")
+            unit.set("description", "@newunit_desc")
+            
+            # Add Classes section
+            classes = ET.SubElement(unit, "Classes")
+            
+            # Add Ranks section
+            ranks = ET.SubElement(unit, "Ranks")
+            
+            # Add TrooperRanks section
+            trooper_ranks = ET.SubElement(unit, "TrooperRanks")
+            
+            # Format and save the XML
+            tree = ET.ElementTree(root)
+            
+            # Use minidom for pretty formatting
+            xml_str = ET.tostring(root, encoding='unicode')
+            dom = xml.dom.minidom.parseString(xml_str)
+            pretty_xml = dom.toprettyxml(indent='    ')
+            
+            # Clean up empty lines while preserving structure
+            lines = [line for line in pretty_xml.split('\n') if line.strip()]
+            formatted_xml = '\n'.join(lines)
+            
+            with open(unit_file, 'w', encoding='utf-8') as f:
+                if formatted_xml.startswith('<?xml'):
+                    formatted_xml = formatted_xml[formatted_xml.find('?>')+2:].strip()
+                f.write('<?xml version="1.0" encoding="utf-8"?>\n')
+                f.write(formatted_xml)
+            
+            log(f"Created default unit file: {unit_file}")
+            
+            # Reinitialize mod_files to detect the new file
+            mod_files.__init__(mod_path)
+            
+        except Exception as e:
+            log(f"Error creating default unit file: {str(e)}")
+            raise
 
 def get_plugin_tab(notebook):
     """Create and return the units editor tab"""
